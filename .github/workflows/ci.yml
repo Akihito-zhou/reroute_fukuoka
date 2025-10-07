@@ -11,10 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # --- Web (pnpm + Vite) ---
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'            # 缓存 pnpm store（更快）
       - name: Enable Corepack
         run: |
           corepack enable
@@ -23,15 +26,17 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Run web build
         run: pnpm --filter ./apps/web build
+
+      # --- API (Poetry + pytest) ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install API dependencies
+      - name: Install Poetry
+        run: pip install "poetry==2.2.1"
+      - name: Install API deps (with dev)
         working-directory: apps/api
-        run: |
-          pip install poetry
-          poetry install
+        run: poetry install --no-interaction --no-ansi --with dev
       - name: Run API tests
         working-directory: apps/api
-        run: poetry run pytest
+        run: poetry run pytest -q

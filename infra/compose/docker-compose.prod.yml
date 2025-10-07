@@ -1,0 +1,40 @@
+services:
+  reverse-proxy:
+    image: traefik:2.10
+    command:
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - ./../traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./../traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+    depends_on:
+      - web
+      - api
+
+  api:
+    image: ghcr.io/reroute-fukuoka/api:latest
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      - redis
+
+  web:
+    image: ghcr.io/reroute-fukuoka/web:latest
+    depends_on:
+      - api
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+volumes:
+  redis-data:

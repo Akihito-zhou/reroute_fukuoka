@@ -57,6 +57,41 @@ python --version
 docker --version
 ```
 
+### **1.1 GitHub SSH 設定（初回のみ）**
+
+> HTTPS ではなく **SSH** 接続を推奨します。これにより、毎回パスワードを入力せず安全に push / pull ができます。
+
+1️⃣ **SSH 鍵を作成（初回のみ）**
+```bash
+ssh-keygen -t ed25519 -C "あなたのGitHubメール"
+```
+
+2️⃣ GitHub に公開鍵を登録
+```bash
+cat ~/.ssh/id_ed25519_github.pub
+```
+コピーして → GitHub → Settings → SSH and GPG Keys → New SSH Key
+
+3️⃣ ~/.ssh/config に登録
+nano ~/.ssh/config
+```bash
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_github
+  IdentitiesOnly yes
+```
+
+4️⃣ 接続テスト
+```bash
+ssh -T git@github.com
+```
+→ “Hi yourname! You’ve successfully authenticated” が出たらOK。
+
+5️⃣ リモートURLをSSHに変更
+```bash
+git remote set-url origin git@github.com:Akihito-zhou/reroute_fukuoka.git
+```
 ---
 
 ## 2. リポジトリを取得

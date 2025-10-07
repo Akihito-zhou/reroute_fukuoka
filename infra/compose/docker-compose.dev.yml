@@ -1,0 +1,60 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  api:
+    # ベースイメージで開発環境を実行（ソースをマウントし、リロードを有効化）
+    image: python:3.11-slim
+    working_dir: /app
+    command: bash -lc "
+      pip install --no-cache-dir poetry==2.2.1 &&
+      poetry config virtualenvs.create false &&
+      poetry install --no-interaction --no-ansi --only main &&
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload "
+    env_file:
+      - ./../../.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+    volumes:
+      - ./../../apps/api:/app:cached
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  web:
+    # Node コンテナで Vite 開発サーバー（ポート5173）を直接起動
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -lc "
+      corepack enable &&
+      corepack prepare pnpm@9.0.0 --activate &&
+      pnpm install --recursive &&
+      pnpm --filter ./apps/web dev --host 0.0.0.0 --port 5173 "
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./../../:/app:cached
+      # ホスト側がコンテナ内の node_modules を上書きしないようにする
+      - /app/node_modules
+      - /app/apps/web/node_modules
+      - /app/packages/ui/node_modules
+      - /app/packages/utils/node_modules
+
+# 任意: 過去に残った DB などの孤立コンテナを削除する場合
+# 実行例: docker compose -f infra/compose/docker-compose.dev.yml down --remove-orphans

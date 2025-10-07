@@ -8,6 +8,8 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+node_modules/
+apps/web/dist/
 build/
 develop-eggs/
 dist/
@@ -200,6 +202,9 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# macOS
+.DS_Store
 
 # Marimo
 marimo/_static/

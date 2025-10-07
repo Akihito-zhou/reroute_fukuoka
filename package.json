@@ -1,0 +1,17 @@
+{
+  "name": "reroute-fukuoka-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@8.15.4",
+  "scripts": {
+    "build:web": "pnpm --filter apps/web build",
+    "lint:web": "pnpm --filter apps/web lint",
+    "docker:up": "docker compose -f infra/compose/docker-compose.dev.yml up",
+    "docker:up:build": "docker compose -f infra/compose/docker-compose.dev.yml up --build -d",
+    "docker:down": "docker compose -f infra/compose/docker-compose.dev.yml down -v",
+    "docker:logs": "docker compose -f infra/compose/docker-compose.dev.yml logs -f",
+    "docker:ps": "docker compose -f infra/compose/docker-compose.dev.yml ps",
+    "docker:exec:api": "docker compose -f infra/compose/docker-compose.dev.yml exec api bash",
+    "docker:exec:web": "docker compose -f infra/compose/docker-compose.dev.yml exec web sh"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@reroute/ui",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {},
+  "devDependencies": {},
+  "dependencies": {}
+}

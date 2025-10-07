@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "paths": {
+      "@reroute/ui": ["../../packages/ui/src/index.ts"],
+      "@reroute/ui/*": ["../../packages/ui/src/*"],
+      "@reroute/utils": ["../../packages/utils/src/index.ts"],
+      "@reroute/utils/*": ["../../packages/utils/src/*"]
+    }
+  },
+  "include": ["src"],
+  "references": []
+}

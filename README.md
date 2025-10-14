@@ -184,6 +184,7 @@ git push origin feature/zhou
 
 ```bash
 corepack enable            # 初回のみ
+cd apps/web                # フロントのフォルターに入る
 pnpm install               # 依存関係インストール
 pnpm dev                   # http://localhost:5173 で動作確認
 ```
@@ -199,6 +200,7 @@ pnpm build
 
 ```bash
 pip install poetry          # 初回のみ
+cd apps/api                 # バックエンドのフォルターに入る 
 poetry install              # 依存関係インストール
 poetry run uvicorn main:app --reload  # http://localhost:8000
 ```

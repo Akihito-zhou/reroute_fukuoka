@@ -4,6 +4,41 @@
 
 ---
 
+## ✨ 24時間チャレンジ・ミニマムプロトの動かし方
+
+| サービス | 起動コマンド | URL / メモ |
+| --- | --- | --- |
+| API (FastAPI) | `cd apps/api && poetry install && poetry run uvicorn main:app --reload` | `http://localhost:8000/api/v1/challenges` でチャレンジ一覧。<br/>`ALLOWED_ORIGINS` 環境変数で CORS をカンマ区切り指定可能（未設定時は `*`）。 |
+| Web (Vite + React) | `cd apps/web && pnpm install && pnpm dev` | `http://localhost:5173`。API 先を変えたい場合は `.env` に `VITE_API_BASE_URL=http://localhost:8000/api/v1` のように設定。 |
+
+- UI は博多発の10テーマを日本語表示＆アニメーション付きで閲覧できます。
+- バックエンドは西鉄バス福岡市内限定のチャレンジデータをモック提供しています（Hakata start 固定）。
+- `/api/v1/challenges/{id}` で詳細（レグ一覧、途中下車ヒントなど）を取得できます。将来的に実データ連携を入れる際のラッパとして活用してください。
+
+---
+
+## 🧠 AI チャレンジプランナーの前提
+
+- `apps/api/data/` に以下のファイルを用意してください  
+  - `stations.csv`: 停留所コード／名称／緯度経度（`tools/fetch_dump_stations.py` で取得済み）  
+  - `freepass_lines.yml`: フリーパス対象ライン（`tools/tag_freepass.py` で生成）  
+  - `timetable_YYYYMMDD.csv`: 任意日の西鉄バス時刻表（下記コマンド）
+- 時刻表の取得（例: 当日ダイヤ）
+
+```bash
+cd apps/api
+python tools/fetch_bus_timetable.py --date 20250315
+```
+
+- API 起動時、`data/` 内で最新の `timetable_*.csv` を読み取り、24 時間制約で
+  1. **最長乗車時間**
+  2. **最多ユニーク停留所**
+  3. **福岡市一周ループ**
+
+  の 3 ルートを自動生成します。必要データが不足している場合は、既存のモックチャレンジに自動フォールバックします。
+
+---
+
 ## 📂 ディレクトリ構成（ざっくり）
 
 ```

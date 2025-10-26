@@ -1,0 +1,1 @@
+{"ResultSet": {}, "status": 400, "text": "{\"ResultSet\":{\"apiVersion\":\"1.0.0.0\",\"engineVersion\":\"\",\"Error\":{\"code\":\"W400\",\"Message\":\"\\\"from\\\"は必須です。\\\"to\\\"は必須です。キー: \\\"addStop\\\"、\\\"direction\\\"、\\\"operationLineCode\\\"は許可されていません。\"}}}"}

@@ -15,12 +15,13 @@ import yaml
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 TIMETABLE_PREFIX = "timetable_"
+SEGMENTS_PREFIX = "segments_"
 
 START_TIME_MINUTES = 7 * 60  # 07:00
 TRANSFER_BUFFER_MINUTES = 3
 MAX_BRANCH_PER_EXPANSION = 6
-MAX_QUEUE_SIZE = 800
-MAX_EXPANSIONS = 20000
+MAX_QUEUE_SIZE = 2000
+MAX_EXPANSIONS = 120000
 REST_STOP_THRESHOLD = 15  # minutes
 
 REST_SUGGESTIONS = [
@@ -122,11 +123,11 @@ class ChallengePlan:
                 "distance_km": round(leg.distance_km, 2),
                 "notes": [f"停車数: {leg.stop_hops + 1}"],
             }
-            for idx, leg in enumerate(legs)
+            for idx, leg in enumerate(self.legs)
         ]
-        rest_stops = generate_rest_stops(legs)
-        total_minutes = sum(leg.ride_minutes for leg in legs)
-        total_distance = sum(leg.distance_km for leg in legs)
+        rest_stops = generate_rest_stops(self.legs)
+        total_minutes = sum(leg.ride_minutes for leg in self.legs)
+        total_distance = sum(leg.distance_km for leg in self.legs)
         return {
             "id": self.challenge_id,
             "title": self.title,
@@ -136,7 +137,7 @@ class ChallengePlan:
             "start_time": format_minutes(START_TIME_MINUTES),
             "total_ride_minutes": total_minutes,
             "total_distance_km": round(total_distance, 1),
-            "transfers": max(0, len(legs) - 1),
+            "transfers": max(0, len(self.legs) - 1),
             "wards": self.wards or ["福岡市内"],
             "badges": [self.badge],
             "legs": legs_payload,
@@ -217,7 +218,7 @@ class PlannerService:
         self._cache: Optional[Dict[str, ChallengePlan]] = None
         self._cache_mtime: float = 0.0
         self._lock = threading.Lock()
-        self._latest_timetable: Optional[Path] = None
+        self._latest_data_file: Optional[Path] = None
 
     # ---------- public API ----------
 
@@ -235,11 +236,11 @@ class PlannerService:
 
     def _ensure_plans(self) -> Dict[str, ChallengePlan]:
         with self._lock:
-            latest = self._find_latest_timetable()
+            latest = self._find_latest_data_file()
             latest_mtime = latest.stat().st_mtime if latest else 0.0
             if (
                 self._cache
-                and self._latest_timetable == latest
+                and self._latest_data_file == latest
                 and self._cache_mtime >= latest_mtime
             ):
                 return self._cache
@@ -249,7 +250,7 @@ class PlannerService:
             plans = self._compute_challenges()
             self._cache = plans
             self._cache_mtime = latest_mtime
-            self._latest_timetable = latest
+            self._latest_data_file = latest
             return plans
 
     def _load_static_assets(self) -> None:
@@ -343,17 +344,34 @@ class PlannerService:
                 mapping[code] = 8  # NW
         return mapping
 
-    def _find_latest_timetable(self) -> Optional[Path]:
-        candidates = sorted(
-            self.data_dir.glob(f"{TIMETABLE_PREFIX}*.csv"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        return candidates[0] if candidates else None
+    def _find_latest_data_file(self) -> Optional[Path]:
+        for prefix in (SEGMENTS_PREFIX, TIMETABLE_PREFIX):
+            candidates = sorted(
+                self.data_dir.glob(f"{prefix}*.csv"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                return candidates[0]
+        return None
 
-    def _load_edges(self, timetable_path: Optional[Path]) -> None:
-        if timetable_path is None:
-            raise PlannerError("timetable_YYYYMMDD.csv が data/ に存在しません。")
+    def _load_edges(self, data_path: Optional[Path]) -> None:
+        if data_path is None:
+            raise PlannerError("segments_YYYYMMDD.csv または timetable_YYYYMMDD.csv が見つかりません。")
+        if data_path.name.startswith(SEGMENTS_PREFIX):
+            edges = self._load_segment_edges(data_path)
+        else:
+            edges = self._load_timetable_edges(data_path)
+        if not edges:
+            raise PlannerError("エッジデータの読み込みに失敗しました。")
+        schedules: Dict[str, StopSchedule] = defaultdict(StopSchedule)
+        for edge in edges:
+            schedules[edge.from_code].add_edge(edge)
+        for sched in schedules.values():
+            sched.finalize()
+        self._stop_schedules = schedules
+
+    def _load_timetable_edges(self, timetable_path: Path) -> List[TripEdge]:
         rows_by_trip: Dict[Tuple[str, str, str, str], List[dict]] = defaultdict(list)
         with timetable_path.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -392,12 +410,7 @@ class PlannerService:
                     rows=rows,
                 )
             )
-        schedules: Dict[str, StopSchedule] = defaultdict(StopSchedule)
-        for edge in edges:
-            schedules[edge.from_code].add_edge(edge)
-        for sched in schedules.values():
-            sched.finalize()
-        self._stop_schedules = schedules
+        return edges
 
     def _rows_to_edges(
         self,
@@ -472,6 +485,56 @@ class PlannerService:
             edges.append(edge)
         return edges
 
+    def _load_segment_edges(self, segment_path: Path) -> List[TripEdge]:
+        edges: List[TripEdge] = []
+        with segment_path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            required = {
+                "line_id",
+                "direction",
+                "service_date",
+                "segment_id",
+                "from_stop",
+                "to_stop",
+                "depart",
+                "arrive",
+            }
+            if not required.issubset(set(reader.fieldnames or [])):
+                raise PlannerError("segments CSV の列構成が想定外です。")
+            for row in reader:
+                line_id = str(row.get("line_id") or "")
+                if line_id not in self._eligible_lines:
+                    continue
+                from_code = str(row.get("from_stop") or "")
+                to_code = str(row.get("to_stop") or "")
+                if from_code not in self._stations or to_code not in self._stations:
+                    continue
+                depart = self._parse_segment_minutes(row.get("depart"))
+                arrive = self._parse_segment_minutes(row.get("arrive"))
+                if depart is None or arrive is None:
+                    continue
+                if arrive <= depart:
+                    arrive += 1440
+                st_a = self._stations[from_code]
+                st_b = self._stations[to_code]
+                edges.append(
+                    TripEdge(
+                        line_id=line_id,
+                        line_name=self._line_names.get(line_id, line_id),
+                        trip_id=str(row.get("segment_id") or f"{line_id}-{from_code}-{to_code}"),
+                        direction=str(row.get("direction") or ""),
+                        service_date=str(row.get("service_date") or ""),
+                        from_code=from_code,
+                        from_name=row.get("from_name") or st_a.name,
+                        to_code=to_code,
+                        to_name=row.get("to_name") or st_b.name,
+                        depart=depart,
+                        arrive=arrive,
+                        distance_km=haversine_km(st_a, st_b),
+                    )
+                )
+        return edges
+
     # ---------- challenge planners ----------
 
     def _compute_challenges(self) -> Dict[str, ChallengePlan]:
@@ -490,6 +553,8 @@ class PlannerService:
             score_key="ride",
             require_unique=False,
             require_quadrants=False,
+            max_queue=2500,
+            max_expansions=150000,
         )
         if result is None:
             raise PlannerError("最長乗車ルートの探索に失敗しました。")
@@ -510,6 +575,9 @@ class PlannerService:
             score_key="unique",
             require_unique=True,
             require_quadrants=False,
+            max_queue=3200,
+            max_expansions=180000,
+            max_branch=10,
         )
         if result is None:
             raise PlannerError("最多停留所ルートの探索に失敗しました。")
@@ -530,7 +598,31 @@ class PlannerService:
             score_key="loop",
             require_unique=False,
             require_quadrants=True,
+            max_queue=3500,
+            max_expansions=220000,
+            max_branch=12,
         )
+        if result is None:
+            # second attempt with relaxed branching penalty
+            result = self._run_search(
+                score_key="loop",
+                require_unique=False,
+                require_quadrants=True,
+                max_queue=4500,
+                max_expansions=260000,
+                max_branch=16,
+            )
+        if result is None:
+            fallback = self._run_search(
+                score_key="loop",
+                require_unique=False,
+                require_quadrants=False,
+                max_queue=5200,
+                max_expansions=320000,
+                max_branch=18,
+            )
+            if fallback:
+                result = fallback
         if result is None:
             raise PlannerError("市内ループルートの探索に失敗しました。")
         legs = collapse_edges(result.path)
@@ -553,17 +645,23 @@ class PlannerService:
         score_key: str,
         require_unique: bool,
         require_quadrants: bool,
+        max_queue: Optional[int] = None,
+        max_expansions: Optional[int] = None,
+        max_branch: Optional[int] = None,
     ) -> Optional[SearchState]:
         if not self._stop_schedules:
             raise PlannerError("時刻表がロードされていません。")
         time_limit = START_TIME_MINUTES + 24 * 60
         pq: List[Tuple[float, int, SearchState]] = []
         counter = 0
+        queue_limit = max_queue or MAX_QUEUE_SIZE
+        expansion_limit = max_expansions or MAX_EXPANSIONS
+        branch_limit = max_branch or MAX_BRANCH_PER_EXPANSION
 
         def push(state: SearchState, priority: float) -> None:
             nonlocal counter
             counter += 1
-            if len(pq) >= MAX_QUEUE_SIZE:
+            if len(pq) >= queue_limit:
                 heapq.heappushpop(pq, (priority, counter, state))
             else:
                 heapq.heappush(pq, (priority, counter, state))
@@ -587,7 +685,7 @@ class PlannerService:
             push(state, 0.0)
 
         expansions = 0
-        while pq and expansions < MAX_EXPANSIONS:
+        while pq and expansions < expansion_limit:
             priority, _, state = heapq.heappop(pq)
             expansions += 1
             # completion check
@@ -613,7 +711,7 @@ class PlannerService:
                 if edge.arrive > time_limit:
                     continue
                 branch_count += 1
-                if branch_count > MAX_BRANCH_PER_EXPANSION:
+                if branch_count > branch_limit:
                     break
 
                 new_path = state.path + (edge,)
@@ -666,14 +764,47 @@ class PlannerService:
         return schedule.edges[idx:]
 
     def _score_state(self, state: SearchState, key: str) -> float:
-        if key == "ride":
-            return float(state.ride_minutes)
-        if key == "unique":
-            return state.unique_count * 1000 + state.ride_minutes
+        line_ids = [edge.line_id for edge in state.path]
+        unique_lines = len(set(line_ids))
+        repeat_penalty = max(0, len(line_ids) - unique_lines)
+
         if key == "loop":
             quadrants = bin(state.quadrant_mask).count("1")
-            return quadrants * 1000 + state.ride_minutes
-        return float(state.ride_minutes)
+            diversity_bonus = unique_lines * 15
+            repeat_penalty_value = repeat_penalty * 4
+            return (
+                quadrants * 2000
+                + float(state.ride_minutes)
+                + diversity_bonus
+                - repeat_penalty_value
+            )
+
+        if key == "unique":
+            diversity_bonus = unique_lines * 12
+            repeat_penalty_value = repeat_penalty * 6
+            return (
+                state.unique_count * 1200
+                + float(state.ride_minutes)
+                + diversity_bonus
+                - repeat_penalty_value
+            )
+
+        diversity_bonus = unique_lines * 10
+        repeat_penalty_value = repeat_penalty * 8
+        return float(state.ride_minutes) + diversity_bonus - repeat_penalty_value
+
+    def _parse_segment_minutes(self, raw: Optional[str]) -> Optional[int]:
+        if not raw:
+            return None
+        text = raw.strip()
+        if len(text) < 5 or text[2] != ":":
+            return None
+        try:
+            hours = int(text[0:2])
+            minutes = int(text[3:5])
+        except ValueError:
+            return None
+        return hours * 60 + minutes
 
 
 def parse_datetime(raw: str, base_dt: datetime) -> Optional[datetime]:

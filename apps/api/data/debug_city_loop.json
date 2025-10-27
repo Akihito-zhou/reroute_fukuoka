@@ -1,0 +1,1280 @@
+{
+  "id": "city-loop",
+  "title": "福岡市一周トレース",
+  "tagline": "市内の北東・南東・南西・北西ゾーンをすべて踏んで一筆書きで戻る。",
+  "theme_tags": [
+    "シティループ",
+    "周回"
+  ],
+  "start_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+  "start_time": "07:00",
+  "total_ride_minutes": 497,
+  "total_distance_km": 98.7,
+  "transfers": 88,
+  "wards": [
+    "福岡市北西エリア"
+  ],
+  "badges": [
+    "周回達人"
+  ],
+  "legs": [
+    {
+      "sequence": 1,
+      "line_label": "3597",
+      "line_name": "西鉄バス・３００・普通・天神－住吉・博多駅行",
+      "from_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+      "to_stop": "郵便局前／西鉄バス",
+      "departure": "07:03",
+      "arrival": "07:43",
+      "ride_minutes": 40,
+      "distance_km": 8.01,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 2,
+      "line_label": "86",
+      "line_name": "西鉄バス・９・普通・城南－渡辺通一・博多駅行",
+      "from_stop": "郵便局前／西鉄バス",
+      "to_stop": "薬院大通り／西鉄バス",
+      "departure": "07:54",
+      "arrival": "08:29",
+      "ride_minutes": 35,
+      "distance_km": 6.18,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 3,
+      "line_label": "460",
+      "line_name": "西鉄バス・５８・普通・桧原営行",
+      "from_stop": "薬院大通り／西鉄バス",
+      "to_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+      "departure": "08:32",
+      "arrival": "08:43",
+      "ride_minutes": 11,
+      "distance_km": 2.17,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 4,
+      "line_label": "3536",
+      "line_name": "西鉄バス・９０・普通・博多埠頭行",
+      "from_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+      "to_stop": "天神北／西鉄バス",
+      "departure": "08:48",
+      "arrival": "09:06",
+      "ride_minutes": 18,
+      "distance_km": 1.95,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 5,
+      "line_label": "11",
+      "line_name": "西鉄バス・６８・普通・天神－国体道路－キャナル博多・博多駅行",
+      "from_stop": "天神北／西鉄バス",
+      "to_stop": "キャナルシティ博多前／西鉄バス",
+      "departure": "09:10",
+      "arrival": "09:21",
+      "ride_minutes": 11,
+      "distance_km": 1.25,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 6,
+      "line_label": "1100",
+      "line_name": "西鉄バス・８・普通・博多駅行",
+      "from_stop": "キャナルシティ博多前／西鉄バス",
+      "to_stop": "荒江四角／西鉄バス",
+      "departure": "09:28",
+      "arrival": "09:54",
+      "ride_minutes": 26,
+      "distance_km": 5.5,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 7,
+      "line_label": "2000",
+      "line_name": "西鉄バス・３・普通・明治通－天神－西新・星の原団地行",
+      "from_stop": "荒江四角／西鉄バス",
+      "to_stop": "飯倉一丁目／西鉄バス",
+      "departure": "09:58",
+      "arrival": "10:00",
+      "ride_minutes": 2,
+      "distance_km": 0.28,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 8,
+      "line_label": "2879",
+      "line_name": "西鉄バス・３・普通・荒江－野芥－早良高・脇山小前行",
+      "from_stop": "飯倉一丁目／西鉄バス",
+      "to_stop": "荒江四角／西鉄バス",
+      "departure": "10:07",
+      "arrival": "10:09",
+      "ride_minutes": 2,
+      "distance_km": 0.28,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 9,
+      "line_label": "2533",
+      "line_name": "西鉄バス・１９・普通・四箇田団地行",
+      "from_stop": "荒江四角／西鉄バス",
+      "to_stop": "雙葉学園入口／西鉄バス",
+      "departure": "10:13",
+      "arrival": "10:27",
+      "ride_minutes": 14,
+      "distance_km": 3.29,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 10,
+      "line_label": "2488",
+      "line_name": "西鉄バス・２０・普通・六本松－薬院－天神－石城町・西鉄貝塚駅行",
+      "from_stop": "雙葉学園入口／西鉄バス",
+      "to_stop": "南薬院／西鉄バス",
+      "departure": "10:36",
+      "arrival": "10:37",
+      "ride_minutes": 1,
+      "distance_km": 0.34,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 11,
+      "line_label": "489",
+      "line_name": "西鉄バス・５７・普通・明治通－天神－赤坂門－桜坂－小笹・柏原営行",
+      "from_stop": "南薬院／西鉄バス",
+      "to_stop": "薬院大通り／西鉄バス",
+      "departure": "10:41",
+      "arrival": "10:43",
+      "ride_minutes": 2,
+      "distance_km": 0.43,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 12,
+      "line_label": "3253",
+      "line_name": "西鉄バス・５１・普通・明治通・天神行",
+      "from_stop": "薬院大通り／西鉄バス",
+      "to_stop": "西鉄グランドホテル前／西鉄バス",
+      "departure": "10:48",
+      "arrival": "10:56",
+      "ride_minutes": 8,
+      "distance_km": 1.03,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 13,
+      "line_label": "1231",
+      "line_name": "西鉄バス・１２・普通・六本松－赤坂門－天神・博多駅行",
+      "from_stop": "西鉄グランドホテル前／西鉄バス",
+      "to_stop": "大名二丁目／西鉄バス",
+      "departure": "10:59",
+      "arrival": "11:00",
+      "ride_minutes": 1,
+      "distance_km": 0.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 14,
+      "line_label": "1236",
+      "line_name": "西鉄バス・１２・普通・六本松－福大前・片江営行",
+      "from_stop": "大名二丁目／西鉄バス",
+      "to_stop": "西鉄グランドホテル前／西鉄バス",
+      "departure": "11:04",
+      "arrival": "11:05",
+      "ride_minutes": 1,
+      "distance_km": 0.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 15,
+      "line_label": "1237",
+      "line_name": "西鉄バス・１２・普通・赤坂門－六本松－福大前・片江営行",
+      "from_stop": "西鉄グランドホテル前／西鉄バス",
+      "to_stop": "大名二丁目／西鉄バス",
+      "departure": "11:09",
+      "arrival": "11:10",
+      "ride_minutes": 1,
+      "distance_km": 0.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 16,
+      "line_label": "2376",
+      "line_name": "西鉄バス・３・普通・明治通・天神・博多駅行",
+      "from_stop": "大名二丁目／西鉄バス",
+      "to_stop": "西鉄グランドホテル前／西鉄バス",
+      "departure": "11:14",
+      "arrival": "11:15",
+      "ride_minutes": 1,
+      "distance_km": 0.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 17,
+      "line_label": "2547",
+      "line_name": "西鉄バス・３・普通・西油山Ｈ行",
+      "from_stop": "西鉄グランドホテル前／西鉄バス",
+      "to_stop": "大名二丁目／西鉄バス",
+      "departure": "11:18",
+      "arrival": "11:19",
+      "ride_minutes": 1,
+      "distance_km": 0.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 18,
+      "line_label": "3258",
+      "line_name": "西鉄バス・５１・普通・明治通－天神－県庁・吉塚営行",
+      "from_stop": "大名二丁目／西鉄バス",
+      "to_stop": "アクロス福岡・水鏡天満宮前／西鉄バス",
+      "departure": "11:23",
+      "arrival": "11:28",
+      "ride_minutes": 5,
+      "distance_km": 0.95,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 19,
+      "line_label": "1192",
+      "line_name": "西鉄バス・７１・普通・月見町行",
+      "from_stop": "アクロス福岡・水鏡天満宮前／西鉄バス",
+      "to_stop": "東中洲／西鉄バス",
+      "departure": "11:31",
+      "arrival": "11:33",
+      "ride_minutes": 2,
+      "distance_km": 0.3,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 20,
+      "line_label": "348",
+      "line_name": "西鉄バス・３・普通・陽光台行",
+      "from_stop": "東中洲／西鉄バス",
+      "to_stop": "川端町・博多座前／西鉄バス",
+      "departure": "11:36",
+      "arrival": "11:37",
+      "ride_minutes": 1,
+      "distance_km": 0.23,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 21,
+      "line_label": "351",
+      "line_name": "西鉄バス・３・普通・明治通－天神－西新・早良営行",
+      "from_stop": "川端町・博多座前／西鉄バス",
+      "to_stop": "東中洲／西鉄バス",
+      "departure": "11:40",
+      "arrival": "11:41",
+      "ride_minutes": 1,
+      "distance_km": 0.23,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 22,
+      "line_label": "483",
+      "line_name": "西鉄バス・５７・普通・赤坂門－天神・博多駅行",
+      "from_stop": "東中洲／西鉄バス",
+      "to_stop": "アクロス福岡・水鏡天満宮前／西鉄バス",
+      "departure": "11:45",
+      "arrival": "11:47",
+      "ride_minutes": 2,
+      "distance_km": 0.3,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 23,
+      "line_label": "558",
+      "line_name": "西鉄バス・５２・普通・松本池・桧原営行",
+      "from_stop": "アクロス福岡・水鏡天満宮前／西鉄バス",
+      "to_stop": "蓮池／西鉄バス",
+      "departure": "11:51",
+      "arrival": "11:57",
+      "ride_minutes": 6,
+      "distance_km": 1.2,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 24,
+      "line_label": "2580",
+      "line_name": "西鉄バス・２９・普通・ＩＣ照葉行",
+      "from_stop": "蓮池／西鉄バス",
+      "to_stop": "呉服町／西鉄バス",
+      "departure": "12:00",
+      "arrival": "12:01",
+      "ride_minutes": 1,
+      "distance_km": 0.32,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 25,
+      "line_label": "945",
+      "line_name": "西鉄バス・４８・普通・竹下駅西口－大橋－がんＣ・福翔・野多目行",
+      "from_stop": "呉服町／西鉄バス",
+      "to_stop": "駅前四丁目／西鉄バス",
+      "departure": "12:04",
+      "arrival": "12:12",
+      "ride_minutes": 8,
+      "distance_km": 1.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 26,
+      "line_label": "35",
+      "line_name": "西鉄バス・１１・普通・薬院駅－六本松－中村高－昭代・藤崎行",
+      "from_stop": "駅前四丁目／西鉄バス",
+      "to_stop": "住吉(福岡市)／西鉄バス",
+      "departure": "12:15",
+      "arrival": "12:18",
+      "ride_minutes": 3,
+      "distance_km": 0.47,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 27,
+      "line_label": "53",
+      "line_name": "西鉄バス・５・普通・住吉・博多駅行",
+      "from_stop": "住吉(福岡市)／西鉄バス",
+      "to_stop": "渡辺通一丁目電気ビル共創館前／西鉄バス",
+      "departure": "12:23",
+      "arrival": "12:27",
+      "ride_minutes": 4,
+      "distance_km": 0.72,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 28,
+      "line_label": "2738",
+      "line_name": "西鉄バス・５４－１・普通・小笹－山荘通－平尾・天神行",
+      "from_stop": "渡辺通一丁目電気ビル共創館前／西鉄バス",
+      "to_stop": "天神南／西鉄バス",
+      "departure": "12:30",
+      "arrival": "12:33",
+      "ride_minutes": 3,
+      "distance_km": 0.56,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 29,
+      "line_label": "2467",
+      "line_name": "西鉄バス・Ｗ１・普通・天神・大橋駅行",
+      "from_stop": "天神南／西鉄バス",
+      "to_stop": "那の津口(ボートレース福岡入口)／西鉄バス",
+      "departure": "12:36",
+      "arrival": "12:44",
+      "ride_minutes": 8,
+      "distance_km": 0.95,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 30,
+      "line_label": "3517",
+      "line_name": "西鉄バス・３０１・普通・天神－住吉・博多駅行",
+      "from_stop": "那の津口(ボートレース福岡入口)／西鉄バス",
+      "to_stop": "天神南／西鉄バス",
+      "departure": "12:50",
+      "arrival": "12:58",
+      "ride_minutes": 8,
+      "distance_km": 0.95,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 31,
+      "line_label": "44",
+      "line_name": "西鉄バス・３０１・普通・天神－住吉・博多駅行",
+      "from_stop": "天神南／西鉄バス",
+      "to_stop": "那の津口(ボートレース福岡入口)／西鉄バス",
+      "departure": "13:01",
+      "arrival": "13:09",
+      "ride_minutes": 8,
+      "distance_km": 0.95,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 32,
+      "line_label": "2347",
+      "line_name": "西鉄バス・Ｗ１・普通・ペイペイドーム－福岡タワー・藤崎行",
+      "from_stop": "那の津口(ボートレース福岡入口)／西鉄バス",
+      "to_stop": "福岡タワー南口／西鉄バス",
+      "departure": "13:14",
+      "arrival": "13:25",
+      "ride_minutes": 11,
+      "distance_km": 4.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 33,
+      "line_label": "1029",
+      "line_name": "西鉄バス・１・普通・福岡タワー・医療Ｃ構内行",
+      "from_stop": "福岡タワー南口／西鉄バス",
+      "to_stop": "ももち浜クリニックゾーン前／西鉄バス",
+      "departure": "13:28",
+      "arrival": "13:29",
+      "ride_minutes": 1,
+      "distance_km": 0.41,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 34,
+      "line_label": "40",
+      "line_name": "西鉄バス・３１２・普通・医師会館－百道ＲＰ都高－呉服町ＲＰ・博多駅行",
+      "from_stop": "ももち浜クリニックゾーン前／西鉄バス",
+      "to_stop": "医師会館・ソフトリサーチパーク前／西鉄バス",
+      "departure": "13:39",
+      "arrival": "13:42",
+      "ride_minutes": 3,
+      "distance_km": 0.8,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 35,
+      "line_label": "3568",
+      "line_name": "西鉄バス・３０６・普通・次郎丸－都高－シーホーク通過・藤崎・博多駅行",
+      "from_stop": "医師会館・ソフトリサーチパーク前／西鉄バス",
+      "to_stop": "福岡タワー南口／西鉄バス",
+      "departure": "13:45",
+      "arrival": "13:48",
+      "ride_minutes": 3,
+      "distance_km": 0.4,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 36,
+      "line_label": "2525",
+      "line_name": "西鉄バス・３０６・普通・次郎丸・藤崎・四箇田団地行",
+      "from_stop": "福岡タワー南口／西鉄バス",
+      "to_stop": "みずほＰａｙＰａｙドーム／西鉄バス",
+      "departure": "13:51",
+      "arrival": "13:59",
+      "ride_minutes": 8,
+      "distance_km": 1.21,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 37,
+      "line_label": "2729",
+      "line_name": "西鉄バス・Ｗ１・普通・都高－ペイペイドーム・福岡タワー行",
+      "from_stop": "みずほＰａｙＰａｙドーム／西鉄バス",
+      "to_stop": "伊崎／西鉄バス",
+      "departure": "14:02",
+      "arrival": "14:06",
+      "ride_minutes": 4,
+      "distance_km": 0.73,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 38,
+      "line_label": "2529",
+      "line_name": "西鉄バス・３０６・普通・福岡タワー・藤崎行",
+      "from_stop": "伊崎／西鉄バス",
+      "to_stop": "福岡タワー南口／西鉄バス",
+      "departure": "14:11",
+      "arrival": "14:23",
+      "ride_minutes": 12,
+      "distance_km": 1.8,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 39,
+      "line_label": "1036",
+      "line_name": "西鉄バス・１－５・普通・藤崎－福岡タワー南口・医療Ｃ構内行",
+      "from_stop": "福岡タワー南口／西鉄バス",
+      "to_stop": "藤崎／西鉄バス",
+      "departure": "14:27",
+      "arrival": "14:33",
+      "ride_minutes": 6,
+      "distance_km": 1.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 40,
+      "line_label": "3543",
+      "line_name": "西鉄バス・１・普通・新室見－壱岐農協前－橋本・野方行",
+      "from_stop": "藤崎／西鉄バス",
+      "to_stop": "福岡タワー南口／西鉄バス",
+      "departure": "14:36",
+      "arrival": "14:42",
+      "ride_minutes": 6,
+      "distance_km": 1.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 41,
+      "line_label": "3572",
+      "line_name": "西鉄バス・３０６・普通・ペイペイドーム－都高－シーホーク通過・博多駅行",
+      "from_stop": "福岡タワー南口／西鉄バス",
+      "to_stop": "医師会館・ソフトリサーチパーク前／西鉄バス",
+      "departure": "14:46",
+      "arrival": "14:48",
+      "ride_minutes": 2,
+      "distance_km": 0.4,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 42,
+      "line_label": "2731",
+      "line_name": "西鉄バス・Ｗ１・普通・天神－都高－西公園ＲＰ・福岡タワー行",
+      "from_stop": "医師会館・ソフトリサーチパーク前／西鉄バス",
+      "to_stop": "福岡タワー(ＴＮＣ放送会館前)／西鉄バス",
+      "departure": "14:54",
+      "arrival": "14:56",
+      "ride_minutes": 2,
+      "distance_km": 0.28,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 43,
+      "line_label": "117",
+      "line_name": "西鉄バス・６－１・普通・キャナル博多・博多駅行",
+      "from_stop": "福岡タワー(ＴＮＣ放送会館前)／西鉄バス",
+      "to_stop": "博物館北口／西鉄バス",
+      "departure": "15:06",
+      "arrival": "15:08",
+      "ride_minutes": 2,
+      "distance_km": 0.14,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 44,
+      "line_label": "2801",
+      "line_name": "西鉄バス・３０６・普通・次郎丸・金武車庫行",
+      "from_stop": "博物館北口／西鉄バス",
+      "to_stop": "医師会館・ソフトリサーチパーク前／西鉄バス",
+      "departure": "15:11",
+      "arrival": "15:12",
+      "ride_minutes": 1,
+      "distance_km": 0.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 45,
+      "line_label": "2732",
+      "line_name": "西鉄バス・Ｗ１・普通・都高－ペイペイドーム・福岡タワー行",
+      "from_stop": "医師会館・ソフトリサーチパーク前／西鉄バス",
+      "to_stop": "福岡タワー(ＴＮＣ放送会館前)／西鉄バス",
+      "departure": "15:15",
+      "arrival": "15:17",
+      "ride_minutes": 2,
+      "distance_km": 0.28,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 46,
+      "line_label": "358",
+      "line_name": "西鉄バス・３・普通・脇山口・早良営行",
+      "from_stop": "福岡タワー(ＴＮＣ放送会館前)／西鉄バス",
+      "to_stop": "博物館北口／西鉄バス",
+      "departure": "15:20",
+      "arrival": "15:22",
+      "ride_minutes": 2,
+      "distance_km": 0.14,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 47,
+      "line_label": "3617",
+      "line_name": "西鉄バス・３０６・普通・ペイペイドーム－都高－シーホーク通過・博多駅行",
+      "from_stop": "博物館北口／西鉄バス",
+      "to_stop": "福岡タワー南口／西鉄バス",
+      "departure": "15:25",
+      "arrival": "15:26",
+      "ride_minutes": 1,
+      "distance_km": 0.21,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 48,
+      "line_label": "1029",
+      "line_name": "西鉄バス・１・普通・福岡タワー・医療Ｃ構内行",
+      "from_stop": "福岡タワー南口／西鉄バス",
+      "to_stop": "藤崎／西鉄バス",
+      "departure": "15:33",
+      "arrival": "15:39",
+      "ride_minutes": 6,
+      "distance_km": 1.19,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 49,
+      "line_label": "2517",
+      "line_name": "西鉄バス・２・普通・室住団地－藤崎－西新－昭和通・天神行",
+      "from_stop": "藤崎／西鉄バス",
+      "to_stop": "原四丁目／西鉄バス",
+      "departure": "15:42",
+      "arrival": "15:52",
+      "ride_minutes": 10,
+      "distance_km": 1.78,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 50,
+      "line_label": "196",
+      "line_name": "西鉄バス・２０３・普通・室住団地－原－六本松－国体道路・天神・博多駅行",
+      "from_stop": "原四丁目／西鉄バス",
+      "to_stop": "原農協前／西鉄バス",
+      "departure": "16:03",
+      "arrival": "16:07",
+      "ride_minutes": 4,
+      "distance_km": 0.99,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 51,
+      "line_label": "1128",
+      "line_name": "西鉄バス・２０１・普通・田隈新町－六本松－国体道路・天神・博多駅行",
+      "from_stop": "原農協前／西鉄バス",
+      "to_stop": "原二丁目／西鉄バス",
+      "departure": "16:14",
+      "arrival": "16:15",
+      "ride_minutes": 1,
+      "distance_km": 0.24,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 52,
+      "line_label": "153",
+      "line_name": "西鉄バス・８・普通・博多駅行",
+      "from_stop": "原二丁目／西鉄バス",
+      "to_stop": "原農協前／西鉄バス",
+      "departure": "16:21",
+      "arrival": "16:22",
+      "ride_minutes": 1,
+      "distance_km": 0.24,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 53,
+      "line_label": "172",
+      "line_name": "西鉄バス・２０４・普通・那の津四行",
+      "from_stop": "原農協前／西鉄バス",
+      "to_stop": "原二丁目／西鉄バス",
+      "departure": "16:25",
+      "arrival": "16:26",
+      "ride_minutes": 1,
+      "distance_km": 0.24,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 54,
+      "line_label": "178",
+      "line_name": "西鉄バス・２０６・普通・西陵高・野方行",
+      "from_stop": "原二丁目／西鉄バス",
+      "to_stop": "原農協前／西鉄バス",
+      "departure": "16:30",
+      "arrival": "16:31",
+      "ride_minutes": 1,
+      "distance_km": 0.24,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 55,
+      "line_label": "202",
+      "line_name": "西鉄バス・２０２・普通・原－室見団地・原北中前行",
+      "from_stop": "原農協前／西鉄バス",
+      "to_stop": "原二丁目／西鉄バス",
+      "departure": "16:34",
+      "arrival": "16:35",
+      "ride_minutes": 1,
+      "distance_km": 0.24,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 56,
+      "line_label": "266",
+      "line_name": "西鉄バス・２０１・普通・六本松－国体道路・天神・博多駅行",
+      "from_stop": "原二丁目／西鉄バス",
+      "to_stop": "原農協前／西鉄バス",
+      "departure": "16:41",
+      "arrival": "16:42",
+      "ride_minutes": 1,
+      "distance_km": 0.24,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 57,
+      "line_label": "275",
+      "line_name": "西鉄バス・２０１・普通・次郎丸－六本松－国体道路・天神・博多駅行",
+      "from_stop": "原農協前／西鉄バス",
+      "to_stop": "原二丁目／西鉄バス",
+      "departure": "16:49",
+      "arrival": "16:50",
+      "ride_minutes": 1,
+      "distance_km": 0.24,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 58,
+      "line_label": "2998",
+      "line_name": "西鉄バス・２１４・普通・原－六本松－薬院駅・博多駅行",
+      "from_stop": "原二丁目／西鉄バス",
+      "to_stop": "原四丁目／西鉄バス",
+      "departure": "17:01",
+      "arrival": "17:04",
+      "ride_minutes": 3,
+      "distance_km": 0.74,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 59,
+      "line_label": "3455",
+      "line_name": "西鉄バス・２０３・普通・室住団地行",
+      "from_stop": "原四丁目／西鉄バス",
+      "to_stop": "原(福岡市)／西鉄バス",
+      "departure": "17:08",
+      "arrival": "17:10",
+      "ride_minutes": 2,
+      "distance_km": 0.29,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 60,
+      "line_label": "243",
+      "line_name": "西鉄バス・２－３・普通・西新－室住団地－橋本・野方行",
+      "from_stop": "原(福岡市)／西鉄バス",
+      "to_stop": "荒戸一丁目／西鉄バス",
+      "departure": "17:15",
+      "arrival": "17:37",
+      "ride_minutes": 22,
+      "distance_km": 4.22,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 61,
+      "line_label": "2518",
+      "line_name": "西鉄バス・２・普通・藤崎－西新－昭和通・天神行",
+      "from_stop": "荒戸一丁目／西鉄バス",
+      "to_stop": "大手門三丁目／西鉄バス",
+      "departure": "17:43",
+      "arrival": "17:44",
+      "ride_minutes": 1,
+      "distance_km": 0.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 62,
+      "line_label": "2587",
+      "line_name": "西鉄バス・２２Ｎ・普通・ＩＣ照葉行",
+      "from_stop": "大手門三丁目／西鉄バス",
+      "to_stop": "荒戸一丁目／西鉄バス",
+      "departure": "17:52",
+      "arrival": "17:54",
+      "ride_minutes": 2,
+      "distance_km": 0.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 63,
+      "line_label": "3112",
+      "line_name": "西鉄バス・２・普通・天神三行",
+      "from_stop": "荒戸一丁目／西鉄バス",
+      "to_stop": "大手門三丁目／西鉄バス",
+      "departure": "17:58",
+      "arrival": "17:59",
+      "ride_minutes": 1,
+      "distance_km": 0.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 64,
+      "line_label": "3632",
+      "line_name": "西鉄バス・２３Ｎ・普通・下原行",
+      "from_stop": "大手門三丁目／西鉄バス",
+      "to_stop": "荒戸一丁目／西鉄バス",
+      "departure": "18:04",
+      "arrival": "18:06",
+      "ride_minutes": 2,
+      "distance_km": 0.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 65,
+      "line_label": "3653",
+      "line_name": "西鉄バス・２８・普通・青葉台口－香椎参道名島－昭和通－天神・大濠公園行",
+      "from_stop": "荒戸一丁目／西鉄バス",
+      "to_stop": "大手門三丁目／西鉄バス",
+      "departure": "18:09",
+      "arrival": "18:10",
+      "ride_minutes": 1,
+      "distance_km": 0.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 66,
+      "line_label": "765",
+      "line_name": "西鉄バス・２８Ｂ・普通・青葉台入口・土井団地行",
+      "from_stop": "大手門三丁目／西鉄バス",
+      "to_stop": "荒戸一丁目／西鉄バス",
+      "departure": "18:16",
+      "arrival": "18:18",
+      "ride_minutes": 2,
+      "distance_km": 0.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 67,
+      "line_label": "768",
+      "line_name": "西鉄バス・２７・普通・香椎参道－名島－昭和通－天神・大濠公園行",
+      "from_stop": "荒戸一丁目／西鉄バス",
+      "to_stop": "大手門三丁目／西鉄バス",
+      "departure": "18:24",
+      "arrival": "18:25",
+      "ride_minutes": 1,
+      "distance_km": 0.33,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 68,
+      "line_label": "265",
+      "line_name": "西鉄バス・２－３・普通・室住団地行",
+      "from_stop": "大手門三丁目／西鉄バス",
+      "to_stop": "弥生二丁目／西鉄バス",
+      "departure": "18:30",
+      "arrival": "18:53",
+      "ride_minutes": 23,
+      "distance_km": 3.77,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 69,
+      "line_label": "2304",
+      "line_name": "西鉄バス・２－９・普通・賀茂駅行",
+      "from_stop": "弥生二丁目／西鉄バス",
+      "to_stop": "原一丁目／西鉄バス",
+      "departure": "18:57",
+      "arrival": "18:58",
+      "ride_minutes": 1,
+      "distance_km": 0.29,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 70,
+      "line_label": "2306",
+      "line_name": "西鉄バス・２－９・普通・原・賀茂駅行",
+      "from_stop": "原一丁目／西鉄バス",
+      "to_stop": "原団地／西鉄バス",
+      "departure": "19:08",
+      "arrival": "19:09",
+      "ride_minutes": 1,
+      "distance_km": 0.3,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 71,
+      "line_label": "231",
+      "line_name": "西鉄バス・２・普通・四箇田団地行",
+      "from_stop": "原団地／西鉄バス",
+      "to_stop": "原(福岡市)／西鉄バス",
+      "departure": "19:12",
+      "arrival": "19:13",
+      "ride_minutes": 1,
+      "distance_km": 0.36,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 72,
+      "line_label": "3610",
+      "line_name": "西鉄バス・２０５・普通・福重－中村－拾六町団地・野方行",
+      "from_stop": "原(福岡市)／西鉄バス",
+      "to_stop": "警固町／西鉄バス",
+      "departure": "19:20",
+      "arrival": "19:37",
+      "ride_minutes": 17,
+      "distance_km": 4.93,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 73,
+      "line_label": "124",
+      "line_name": "西鉄バス・６・普通・鳥飼－西新四－博物館南口・福岡タワー行",
+      "from_stop": "警固町／西鉄バス",
+      "to_stop": "別府橋／西鉄バス",
+      "departure": "19:40",
+      "arrival": "19:47",
+      "ride_minutes": 7,
+      "distance_km": 1.81,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 74,
+      "line_label": "3609",
+      "line_name": "西鉄バス・２０８・普通・原－有田－木の葉モール橋本前・野方行",
+      "from_stop": "別府橋／西鉄バス",
+      "to_stop": "六本松(福銀前)／西鉄バス",
+      "departure": "19:53",
+      "arrival": "19:54",
+      "ride_minutes": 1,
+      "distance_km": 0.25,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 75,
+      "line_label": "520",
+      "line_name": "西鉄バス・１３・普通・六本松－観光道路・桧原営行",
+      "from_stop": "六本松(福銀前)／西鉄バス",
+      "to_stop": "六本松大通り／西鉄バス",
+      "departure": "19:57",
+      "arrival": "19:58",
+      "ride_minutes": 1,
+      "distance_km": 0.22,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 76,
+      "line_label": "546",
+      "line_name": "西鉄バス・１１３・普通・油山団地・片江営行",
+      "from_stop": "六本松大通り／西鉄バス",
+      "to_stop": "警固一丁目／西鉄バス",
+      "departure": "20:01",
+      "arrival": "20:07",
+      "ride_minutes": 6,
+      "distance_km": 1.6,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 77,
+      "line_label": "312",
+      "line_name": "西鉄バス・２００・普通・国体道路－六本松－飯倉－野芥・さわら台団地行",
+      "from_stop": "警固一丁目／西鉄バス",
+      "to_stop": "警固町／西鉄バス",
+      "departure": "20:10",
+      "arrival": "20:12",
+      "ride_minutes": 2,
+      "distance_km": 0.29,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 78,
+      "line_label": "3254",
+      "line_name": "西鉄バス・５１・普通・明治通－天神－県庁・九大病院行",
+      "from_stop": "警固町／西鉄バス",
+      "to_stop": "赤坂門／西鉄バス",
+      "departure": "20:15",
+      "arrival": "20:17",
+      "ride_minutes": 2,
+      "distance_km": 0.37,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 79,
+      "line_label": "504",
+      "line_name": "西鉄バス・５６・普通・動物園前－小笹・柏原営行",
+      "from_stop": "赤坂門／西鉄バス",
+      "to_stop": "動物園前／西鉄バス",
+      "departure": "20:20",
+      "arrival": "20:29",
+      "ride_minutes": 9,
+      "distance_km": 1.72,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 80,
+      "line_label": "487",
+      "line_name": "西鉄バス・５６・普通・柏原営行",
+      "from_stop": "動物園前／西鉄バス",
+      "to_stop": "教会前(中央区)／西鉄バス",
+      "departure": "20:34",
+      "arrival": "20:35",
+      "ride_minutes": 1,
+      "distance_km": 0.3,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 81,
+      "line_label": "488",
+      "line_name": "西鉄バス・５６・普通・赤坂門・天神行",
+      "from_stop": "教会前(中央区)／西鉄バス",
+      "to_stop": "動物園前／西鉄バス",
+      "departure": "20:39",
+      "arrival": "20:40",
+      "ride_minutes": 1,
+      "distance_km": 0.3,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 82,
+      "line_label": "485",
+      "line_name": "西鉄バス・５６・普通・明治通－天神－赤坂門－動物園－小笹・桧原営行",
+      "from_stop": "動物園前／西鉄バス",
+      "to_stop": "薬院二丁目／西鉄バス",
+      "departure": "20:46",
+      "arrival": "20:52",
+      "ride_minutes": 6,
+      "distance_km": 1.12,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 83,
+      "line_label": "557",
+      "line_name": "西鉄バス・５２－１・普通・長住－寺塚－野間－赤坂門・天神行",
+      "from_stop": "薬院二丁目／西鉄バス",
+      "to_stop": "赤坂門／西鉄バス",
+      "departure": "21:09",
+      "arrival": "21:12",
+      "ride_minutes": 3,
+      "distance_km": 0.75,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 84,
+      "line_label": "1236",
+      "line_name": "西鉄バス・１２・普通・六本松－福大前・片江営行",
+      "from_stop": "赤坂門／西鉄バス",
+      "to_stop": "別府橋／西鉄バス",
+      "departure": "21:20",
+      "arrival": "21:29",
+      "ride_minutes": 9,
+      "distance_km": 1.96,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 85,
+      "line_label": "327",
+      "line_name": "西鉄バス・１７・普通・城南－渡辺通一・博多駅行",
+      "from_stop": "別府橋／西鉄バス",
+      "to_stop": "荒江四角／西鉄バス",
+      "departure": "21:33",
+      "arrival": "21:39",
+      "ride_minutes": 6,
+      "distance_km": 1.83,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 86,
+      "line_label": "2533",
+      "line_name": "西鉄バス・１９・普通・四箇田団地行",
+      "from_stop": "荒江四角／西鉄バス",
+      "to_stop": "雙葉学園入口／西鉄バス",
+      "departure": "21:43",
+      "arrival": "21:54",
+      "ride_minutes": 11,
+      "distance_km": 3.29,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 87,
+      "line_label": "37",
+      "line_name": "西鉄バス・１１・普通・博多駅－薬院駅－六本松－昭代・藤崎行",
+      "from_stop": "雙葉学園入口／西鉄バス",
+      "to_stop": "桜坂(城南線)／西鉄バス",
+      "departure": "22:05",
+      "arrival": "22:06",
+      "ride_minutes": 1,
+      "distance_km": 0.48,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 88,
+      "line_label": "330",
+      "line_name": "西鉄バス・１７・普通・早良営行",
+      "from_stop": "桜坂(城南線)／西鉄バス",
+      "to_stop": "六本松(こんどう美容室)／西鉄バス",
+      "departure": "22:10",
+      "arrival": "22:13",
+      "ride_minutes": 3,
+      "distance_km": 0.78,
+      "notes": [
+        "停車数: 2"
+      ]
+    },
+    {
+      "sequence": 89,
+      "line_label": "1231",
+      "line_name": "西鉄バス・１２・普通・六本松－赤坂門－天神・博多駅行",
+      "from_stop": "六本松(こんどう美容室)／西鉄バス",
+      "to_stop": "博多駅新三井ビル前／西鉄バス",
+      "departure": "22:28",
+      "arrival": "22:48",
+      "ride_minutes": 20,
+      "distance_km": 4.02,
+      "notes": [
+        "停車数: 2"
+      ]
+    }
+  ],
+  "rest_stops": [
+    {
+      "at": "薬院二丁目／西鉄バス",
+      "minutes": 17,
+      "suggestion": "周辺を5分だけ散策して気分転換。"
+    },
+    {
+      "at": "六本松(こんどう美容室)／西鉄バス",
+      "minutes": 15,
+      "suggestion": "ベンチで次のルートを確認しよう。"
+    }
+  ]
+}

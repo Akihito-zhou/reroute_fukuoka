@@ -1,4 +1,4 @@
-# 開発ログ（〜2025/10/26）
+# 開発ログ（〜2025/10/27）
 
 ## 実装済み機能まとめ
 
@@ -73,3 +73,56 @@
 - 生成結果が 24 時間全体に分布しているか、停留所数・距離が期待通りかを可視化（ログ出力や `log.md` の追記など）して共有する。
 
 以上が 2025/10/26 時点での到達点と課題です。***
+
+---
+
+## 2025/10/27 の作業メモ
+
+### ✅ 実装・改善
+- **区間単位の時刻表取得に刷新**  
+  `fetch_bus_timetable.py` を全面改修し、`line_stop_edges.csv` の隣接停留所ごとに `/v1/json/bus/timetable` を呼び出して区間（segment）単位のデータを生成。出力を `segments_YYYYMMDD.csv` に切り替え、全 683 路線について 2025-10-26 のデータを取得。
+- **Planner の segments 対応**  
+  `_find_latest_data_file()` で `segments_*.csv` を優先検出し、`_load_segment_edges()` を新設。区間データから `TripEdge` を直接生成し、StopSchedule を組み立てられるようにした。従来の `timetable_*.csv` もフォールバックとして残存。
+- **スコアリングと探索パラメータの調整**  
+  `_score_state()` に路線多様性ボーナスと重複ペナルティを導入。`MAX_QUEUE_SIZE` / `MAX_EXPANSIONS` を引き上げ、`_run_search()` に可変パラメータ（max_queue / max_expansions / max_branch）を追加。`_plan_city_loop()` では 2 段階のリトライを実装して四象限ループを拾いやすくした。
+- **3種チャレンジ用テスト整備**  
+  `tests/test_planner_segments.py` を作成し、segments 読み込み後に `_plan_longest_duration()` / `_plan_most_unique_stops()` / `_plan_city_loop()` をそれぞれ実行。各チャレンジの先頭 10 区間を標準出力し、フル結果を `debug_longest_duration.json` / `debug_most_unique.json` / `debug_city_loop.json` に保存するよう変更。
+- **API レイヤの動作確認**  
+  `service.list_challenges()` が fallback せず 3 ルートを返すことを確認。フロントエンド（`/api/v1/challenges`）からも最新チャレンジが取得可能に。
+
+### 🔍 アルゴリズム挙動メモ
+- 区間データから 24 時間ビームサーチを再実行すると、最長乗車ルートは 87 区間・522 分、ユニーク停留所ルートは 92 区間・439 分、市内ループは 89 区間・497 分を到達。各 JSON に全 legs を保存済み。
+- 重複ペナルティ導入後も、一部の長距離便で往復が残る（特に `3597` 系統）。これは「乗車時間最大化」を最優先にしているためで、今後は区間別クールタイムや路線単位の出現上限を導入する余地あり。
+- 市内ループは fallback で「四象限が 3 つでも許容」するよう緩和したため、現行データでは北西寄りのルートが選ばれやすい。象限バランスを調整するなら quadrant ごとの最低訪問回数を別途課す必要がある。
+
+### ⚠️ 未解決・要改善ポイント
+- **スタート時刻の上限設定**：segments を 24 時間ぶん取得しているため、07:00 以前に出発する区間も検索対象に残っている。`START_TIME_MINUTES` を基準に早朝便を除外するフィルタが必要。
+- **探索コスト**：`MAX_EXPANSIONS` を大きくしたことで city-loop が成立したが、全探索で 20～30 秒かかるケースがある。キャッシュや事前アンカー指定で探索幅を減らす対策が必要。
+- **ルート品質**：現状は距離や停留所の偏りを緩和するための制約が不足。以下を今後の候補とする。
+  - 路線ごとのクールタイム／乗車回数上限。
+  - 一定範囲内の停留所重複（徒歩圏内の同系列停留所）を同一扱いするルール。
+  - 休憩ポイントや乗継余裕時間を評価に組み込む。
+- **リアルタイム化**：segments を全路線で生成すると API 呼び出し数が大きいため、将来的には `--line_ids` + `--window` を使った部分更新、または pattern API によるオンデマンド補正が必要。
+
+### 📎 チェックに使うコマンド
+```bash
+# 区間取得
+python tools/fetch_bus_timetable.py --date 20251026 --limit 0 --sleep 0.3
+
+# 3種チャレンジのテスト＆JSON出力
+poetry run pytest -s tests/test_planner_segments.py
+
+# API 経由でチェック
+poetry run python - <<'PY'
+from services.planner import PlannerService, PlannerError
+
+service = PlannerService()
+try:
+    for plan in service.list_challenges():
+        print(plan['id'], plan['total_ride_minutes'])
+except PlannerError as exc:
+    print('fallback:', exc)
+PY
+```
+
+以上が 2025/10/27 の成果と残課題です。

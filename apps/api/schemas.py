@@ -7,7 +7,7 @@ These schemas wrap the static challenge data so that the frontend consumes
 typed and well-defined JSON structures.
 """
 
-from typing import List
+from typing import List, Literal, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,20 @@ class LegOut(BaseModel):
     ride_minutes: int = Field(..., description="Planned riding duration in minutes.")
     distance_km: float = Field(..., description="Approximate distance covered during the leg.")
     notes: List[str] = Field(default_factory=list, description="Notes highlighting unique aspects.")
+    geometry: dict | None = Field(
+        default=None,
+        description="GeoJSON geometry describing the leg path (LineString).",
+    )
+    path: List[dict] | None = Field(
+        default=None,
+        description="Simplified list of coordinate dicts (lat/lon) for the leg path.",
+    )
+    from_coord: dict | None = Field(
+        default=None, description="Starting coordinate of the leg (lat/lon)."
+    )
+    to_coord: dict | None = Field(
+        default=None, description="Ending coordinate of the leg (lat/lon)."
+    )
 
 
 class ChallengeSummaryOut(BaseModel):
@@ -48,4 +62,3 @@ class ChallengeSummaryOut(BaseModel):
 class ChallengeDetailOut(ChallengeSummaryOut):
     legs: List[LegOut]
     rest_stops: List[RestStopOut]
-

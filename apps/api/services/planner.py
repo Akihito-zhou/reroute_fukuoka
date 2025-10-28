@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import csv
 import heapq
+import logging
 import math
+import os
 import threading
+import time
 from bisect import bisect_left
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -12,6 +15,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import yaml
+try:  # pragma: no cover - allow running as either package or module
+    from ..clients.ekispert_bus import EkispertBusClient
+except ImportError:  # pragma: no cover
+    from clients.ekispert_bus import EkispertBusClient  # type: ignore
+
+try:  # pragma: no cover - allow running as either package or module
+    from .realtime_timetable import RealtimeTimetableManager
+except ImportError:  # pragma: no cover
+    from realtime_timetable import RealtimeTimetableManager  # type: ignore
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 TIMETABLE_PREFIX = "timetable_"
@@ -23,6 +35,7 @@ MAX_BRANCH_PER_EXPANSION = 6
 MAX_QUEUE_SIZE = 2000
 MAX_EXPANSIONS = 120000
 REST_STOP_THRESHOLD = 15  # minutes
+DEFAULT_REALTIME_CACHE_SECONDS = 120
 
 REST_SUGGESTIONS = [
     "コンビニで飲み物を補給しよう。",
@@ -31,6 +44,9 @@ REST_SUGGESTIONS = [
     "ベンチで次のルートを確認しよう。",
     "軽くストレッチしてリフレッシュ。",
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 class PlannerError(RuntimeError):
@@ -59,6 +75,10 @@ class TripEdge:
     depart: int
     arrive: int
     distance_km: float
+    from_lat: float
+    from_lon: float
+    to_lat: float
+    to_lon: float
 
     @property
     def ride_minutes(self) -> int:
@@ -96,6 +116,11 @@ class LegPlan:
     ride_minutes: int
     distance_km: float
     stop_hops: int
+    path: List[Tuple[float, float]]
+    from_lat: float
+    from_lon: float
+    to_lat: float
+    to_lon: float
 
 
 @dataclass
@@ -122,6 +147,23 @@ class ChallengePlan:
                 "ride_minutes": leg.ride_minutes,
                 "distance_km": round(leg.distance_km, 2),
                 "notes": [f"停車数: {leg.stop_hops + 1}"],
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [
+                        [round(lon, 6), round(lat, 6)] for lat, lon in leg.path
+                    ],
+                },
+                "path": [
+                    {"lat": round(lat, 6), "lon": round(lon, 6)} for lat, lon in leg.path
+                ],
+                "from_coord": {
+                    "lat": round(leg.from_lat, 6),
+                    "lon": round(leg.from_lon, 6),
+                },
+                "to_coord": {
+                    "lat": round(leg.to_lat, 6),
+                    "lon": round(leg.to_lon, 6),
+                },
             }
             for idx, leg in enumerate(self.legs)
         ]
@@ -207,7 +249,14 @@ def load_yaml(path: Path) -> dict:
 class PlannerService:
     """Generates challenge plans based on stored timetable + geo data."""
 
-    def __init__(self, data_dir: Path | None = None):
+    def __init__(
+        self,
+        data_dir: Path | None = None,
+        *,
+        enable_realtime: Optional[bool] = None,
+        api_key: Optional[str] = None,
+        realtime_cache_seconds: int = DEFAULT_REALTIME_CACHE_SECONDS,
+    ):
         self.data_dir = Path(data_dir) if data_dir else DATA_DIR
         self._stations: Dict[str, Station] = {}
         self._line_names: Dict[str, str] = {}
@@ -219,6 +268,29 @@ class PlannerService:
         self._cache_mtime: float = 0.0
         self._lock = threading.Lock()
         self._latest_data_file: Optional[Path] = None
+        self._static_edges: List[TripEdge] = []
+
+        env_flag = os.getenv("PLANNER_ENABLE_REALTIME", "").strip().lower()
+        env_enabled = env_flag in {"1", "true", "yes", "on"}
+        self._realtime_cache_seconds = max(30, realtime_cache_seconds)
+        desired_realtime = enable_realtime if enable_realtime is not None else env_enabled
+        api_key_value = api_key or os.getenv("EKISPERT_API_KEY")
+        client = (
+            EkispertBusClient(api_key_value)
+            if desired_realtime and api_key_value
+            else None
+        )
+        if desired_realtime and not api_key_value:
+            logger.warning(
+                "Planner realtime mode requested but EKISPERT_API_KEY is missing; falling back to static data."
+            )
+        self._timetable_manager = RealtimeTimetableManager(
+            client,
+            enable_realtime=client is not None,
+            cache_seconds=self._realtime_cache_seconds,
+        )
+        self._realtime_active = self._timetable_manager.realtime_enabled
+        self._cache_generated_at = 0.0
 
     # ---------- public API ----------
 
@@ -238,19 +310,30 @@ class PlannerService:
         with self._lock:
             latest = self._find_latest_data_file()
             latest_mtime = latest.stat().st_mtime if latest else 0.0
-            if (
-                self._cache
-                and self._latest_data_file == latest
-                and self._cache_mtime >= latest_mtime
-            ):
+            now_ts = time.time()
+            static_stale = (
+                not self._cache
+                or self._latest_data_file != latest
+                or self._cache_mtime < latest_mtime
+            )
+            realtime_stale = self._realtime_active and (
+                now_ts - self._cache_generated_at >= self._realtime_cache_seconds
+            )
+            if self._cache and not static_stale and not realtime_stale:
                 return self._cache
 
-            self._load_static_assets()
-            self._load_edges(latest)
+            if static_stale:
+                self._load_static_assets()
+                self._load_edges(latest)
+            elif realtime_stale:
+                self._refresh_stop_schedules(force_refresh=True)
+
             plans = self._compute_challenges()
             self._cache = plans
             self._cache_mtime = latest_mtime
             self._latest_data_file = latest
+            # track for realtime invalidation
+            self._cache_generated_at = now_ts
             return plans
 
     def _load_static_assets(self) -> None:
@@ -364,9 +447,42 @@ class PlannerService:
             edges = self._load_timetable_edges(data_path)
         if not edges:
             raise PlannerError("エッジデータの読み込みに失敗しました。")
+        self._static_edges = edges
+        self._timetable_manager.load_static_edges(edges)
+        self._refresh_stop_schedules(force_refresh=True)
+        if not self._stop_schedules:
+            raise PlannerError("利用可能な便が見つかりませんでした。")
+
+    def _refresh_stop_schedules(self, *, force_refresh: bool = False) -> None:
+        horizon_start = START_TIME_MINUTES
+        horizon_end = START_TIME_MINUTES + 24 * 60
+        edges: List[TripEdge] = []
+        if self._timetable_manager:
+            edges = self._timetable_manager.get_edges_for_window(
+                horizon_start,
+                horizon_end,
+                line_filter=self._eligible_lines,
+                force_refresh=force_refresh,
+            )
+        if not edges:
+            edges = [
+                edge
+                for edge in self._static_edges
+                if edge.arrive >= horizon_start and edge.depart <= horizon_end
+            ]
+        if not edges:
+            logger.warning(
+                "No timetable edges available between %s and %s minutes.",
+                horizon_start,
+                horizon_end,
+            )
+            self._stop_schedules = {}
+            return
         schedules: Dict[str, StopSchedule] = defaultdict(StopSchedule)
         for edge in edges:
             schedules[edge.from_code].add_edge(edge)
+        if not schedules and edges:
+            logger.warning("Edges available but no schedules were constructed; check data integrity.")
         for sched in schedules.values():
             sched.finalize()
         self._stop_schedules = schedules
@@ -481,6 +597,10 @@ class PlannerService:
                 depart=depart,
                 arrive=arrive,
                 distance_km=haversine_km(st_a, st_b),
+                from_lat=st_a.lat,
+                from_lon=st_a.lon,
+                to_lat=st_b.lat,
+                to_lon=st_b.lon,
             )
             edges.append(edge)
         return edges
@@ -531,6 +651,10 @@ class PlannerService:
                         depart=depart,
                         arrive=arrive,
                         distance_km=haversine_km(st_a, st_b),
+                        from_lat=st_a.lat,
+                        from_lon=st_a.lon,
+                        to_lat=st_b.lat,
+                        to_lon=st_b.lon,
                     )
                 )
         return edges
@@ -860,6 +984,11 @@ def _compress_buffer(buffer: Sequence[TripEdge]) -> LegPlan:
     last = buffer[-1]
     distance = sum(edge.distance_km for edge in buffer)
     ride_minutes = last.arrive - first.depart
+    path: List[Tuple[float, float]] = []
+    for idx, edge in enumerate(buffer):
+        if idx == 0:
+            path.append((edge.from_lat, edge.from_lon))
+        path.append((edge.to_lat, edge.to_lon))
     return LegPlan(
         line_id=first.line_id,
         line_name=first.line_name,
@@ -873,6 +1002,11 @@ def _compress_buffer(buffer: Sequence[TripEdge]) -> LegPlan:
         ride_minutes=ride_minutes,
         distance_km=distance,
         stop_hops=len(buffer),
+        path=path,
+        from_lat=first.from_lat,
+        from_lon=first.from_lon,
+        to_lat=last.to_lat,
+        to_lon=last.to_lon,
     )
 
 

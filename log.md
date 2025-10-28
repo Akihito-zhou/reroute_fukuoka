@@ -1,4 +1,4 @@
-# 開発ログ（〜2025/10/27）
+# 開発ログ（〜2025/10/28）
 
 ## 実装済み機能まとめ
 
@@ -76,7 +76,7 @@
 
 ---
 
-## 2025/10/27 の作業メモ
+## 2025/10/27 
 
 ### ✅ 実装・改善
 - **区間単位の時刻表取得に刷新**  
@@ -126,3 +126,74 @@ PY
 ```
 
 以上が 2025/10/27 の成果と残課題です。
+
+---
+
+## 2025/10/28
+
+### 🔰 背景と到達点
+- これまでの課題（短距離の静的モックしか返らない・実データ探索が成立しない）を踏まえ、**データ収集 → グラフ構築 → 探索 → API → フロント描画** の全工程を改めて整理し、欠落していたドキュメントを補完した。
+- 特に「なぜ区間単位で時刻表を取得するのか」「探索ロジックの内部構造」「リアルタイム補正の流れ」「Leaflet による描画手順」といった暗黙知を明文化。
+
+### 🚌 時刻表収集の全体像（0 → 100）
+1. **種データ作成**  
+   - `/v1/json/search/course/extreme` を使うツール（`tools/fetch_operation_lines.py`）で、代表ルートから路線 ID と停留所列を推定し `line_stop_edges.csv` を生成。  
+   - 停留所位置は `/v1/json/station`（もしくは BC のバルク CSV）を `tools/fetch_dump_stations.py` で保存し `stations.csv` に集約。
+2. **区間化の必然性**  
+   - `/v1/json/bus/timetable` は **from・to を指定した区間** のみ返す API。全停留所の時刻表を得るには、路線上の隣接停留所ペアをすべて走査するしかない。  
+   - 1 区間ずつ取得することで、trip_id ごとの厳密な出発・到着時刻、延着の有無を取りこぼさず収集できる。  
+   - 各 API 呼び出しはキャッシュ（`tools/.cache_ttb`）に保存し、再実行時は 200 件超の再取得を避ける。  
+3. **CSV 生成**  
+   - `fetch_bus_timetable.py` は `(line_id, direction, service_date, from_stop, to_stop, depart, arrive, segment_id)` を縦持ちした `segments_YYYYMMDD.csv` を出力。trip_id が無い場合は `segment_id` を代替キーにする。  
+   - これが Planner のグラフ入力となり、1 行 = 1 エッジ、として扱える。
+
+### 🗺️ グラフ構築とデータ流通
+- `PlannerService._load_segment_edges()` が `segments` CSV を読み込み `TripEdge` を生成。`TripEdge` には line 名・trip ID・前後停留所名・分単位の depart/arrive・距離（`haversine_km`）・緯度経度をすべて格納。  
+- 同一停留所のエッジは `StopSchedule`（depart 昇順）に集約され、`bisect_left` で「指定時刻以降の便」を即座に引ける。  
+- 連続する trip 内区間は `collapse_edges()` で 1 レグに圧縮し、レスポンスでは `geometry`（GeoJSON LineString）と `path`（lat/lon 配列）を両方提供。フロントはどちらでも描画可能。
+
+### 🛰️ リアルタイム補正エンジン
+- 環境変数 `PLANNER_ENABLE_REALTIME=true` と `EKISPERT_API_KEY=<mixway-key>` を指定すると、`EkispertBusClient` が `/v1/json/realtime/trip`・`/v1/json/realtime/search/course/extreme` 等にアクセス可能になる。  
+- `RealtimeTimetableManager` は静的 `TripEdge` を保持しつつ、TTL（デフォ 120 秒）を超えたらリアルタイムを取得→区間別に `depart/arrive/status/delay` を上書き。キャンセル便は検索対象から除外。  
+- 失敗時は静的データにフォールバックし、`routes.py` の `_debug_cache` で `debug_*.json` を返す仕組みも用意。こうして API は常に 3 ルートを提供できる。
+
+### 🔍 探索アルゴリズム詳細
+- **手法**：RAPTOR ではなく、課題に合わせた **Beam Search / Best First Search** を採用。  
+  - 状態 `SearchState`：  
+    ```
+    priority（ヒープキー）, ride_minutes, current_time,
+    stop_code, path(TripEdge 配列), visited(停留所集合),
+    unique_count, quadrant_mask
+    ```
+  - 初期状態は博多駅周辺の複数停留所。`quadrant_mask` は市内を NE/SE/SW/NW の 4 象限に分けたビットフラグ。  
+  - `priority` は `_score_state` が `score_key`（ride/unique/loop）に応じて決定。  
+    - `ride`: 乗車分 + 路線多様性ボーナス − 重複路線ペナルティ。  
+    - `unique`: ユニーク停留所数 × 1200 + 乗車分 + 路線多様性 ×12 − 重複 ×6。  
+    - `loop`: 象限達成数×2000 + 乗車分 + 路線多様性 ×15 − 重複 ×4。  
+  - 制約：キュー上限（既定 2000～5200）、分岐数（6～18）、最大展開回数、24 時間以内、乗換バッファ 3 分。  
+  - 完了条件：パスが存在し、博多系停留所へ戻り、開始から 120 分以上経過。`loop` の場合は全象限達成で即打ち切り。
+- **ヒューリスティック**：重複路線を罰するほか、象限未達成の場合は**初期遷移で同象限へ戻らないようスキップ**し、探索を外側へ広げる。  
+- Beam Search を選んだ理由：RAPTOR は厳密最適性が強みだが、今回の 3 ルートは「耐久」「ユニーク」「象限」など複合スコアが目的で、Pareto 最適ではなくカスタム評価が必要だったため。
+
+### 🗺️ フロント描画の実装ディテール
+- スタック：React 18 + Vite + Tailwind + Framer Motion。  
+- ルーティング：`react-router-dom` の `BrowserRouter` で `/`（概要）と `/challenge/:id`（詳細）を分離。  
+- 地図：`react-leaflet` + CARTO Light タイル。  
+  - `RouteMap` は `path` → `geometry.coordinates` → `from_coord/to_coord` の順で座標配列を決定し、`Polyline`（太さ 5）で leg ごとの折線を描画。  
+  - `FitBounds` コンポーネントで全座標からバウンディングボックスを計算し、自動ズーム。  
+  - `CircleMarker` でスタート（シアン）/ゴール（オレンジ）を表示。  
+  - path が欠落している旧フォーマットにも対応するため、起終点しか無い場合は直線 2 点を生成して描画。
+
+### ✅ データ検証と運用メモ
+- `pytest apps/api/tests/test_planner_segments.py` で最新 CSV を用いたチャレンジ出力を再生成し、`debug_*.json` を更新。  
+- `curl http://localhost:8000/api/v1/challenges/longest-duration | jq '.legs[0]'` で geometry/path の存在を確認。  
+- Docker（`make up-dev`）起動時は API と Web がホットリロードするため、コード更新後は必ず `make down-dev && make up-dev` で再起動してキャッシュを更新する。
+
+### 📌 今後の改善ポイント
+- **データ収集**：バッチ取得の高速化、`/operationLine/timetable` など全停留所を返す API の再調査、`--line_ids` を使った差分更新。  
+- **探索性能**：路線クールタイム、象限達成のヒューリスティック強化、RAPTOR/CSA へのリプレース検討、探索統計のメトリクス化。  
+- **リアルタイム**：TTL の動的制御、複数 trip クエリのバッチング、API 失敗時のリトライ戦略強化、フォールバック検知ログ。  
+- **UI**：区間ハイライト、 hover tooltip、行程の共有ボタン、i18n（日本語/中国語/英語）切り替え。  
+- **テスト**：API の契約テスト・フロント E2E を追加し、リアルタイム補正時のリグレッションを検知できるようにする。
+
+---

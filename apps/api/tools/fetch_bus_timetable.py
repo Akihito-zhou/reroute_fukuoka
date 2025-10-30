@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -137,6 +138,23 @@ def within_window(time_text: str, window: Tuple[str, str] | None) -> bool:
     return hhmm >= start or hhmm <= end
 
 
+def normalize_time(text: str) -> str:
+    if not text:
+        return ""
+    text = text.strip()
+    if len(text) == 4 and text.isdigit():
+        return f"{text[:2]}:{text[2:]}"
+    if len(text) >= 5 and text[2] == ":":
+        return text[:5]
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+        return dt.strftime("%H:%M")
+    except ValueError:
+        return text[:5]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch bus timetable segments.")
     parser.add_argument("--date", required=True, help="Service date (YYYYMMDD)")
@@ -195,6 +213,7 @@ def main() -> None:
             continue
 
         for direction, sequence in (("Up", ordered), ("Down", list(reversed(ordered)))):
+            trip_segments: Dict[str, Dict[int, Tuple[str, str, str, str]]] = {}
             for idx in range(len(sequence) - 1):
                 frm = sequence[idx]
                 to = sequence[idx + 1]
@@ -205,24 +224,33 @@ def main() -> None:
                 from_name = station_names.get(frm, frm)
                 to_name = station_names.get(to, to)
                 for seg_idx, (trip_id, dep, arr) in enumerate(segments):
-                    if dep and not within_window(dep, window):
+                    dep_norm = normalize_time(dep)
+                    arr_norm = normalize_time(arr)
+                    if dep_norm and not within_window(dep_norm, window):
                         continue
+                    trip_store = trip_segments.setdefault(trip_id, {})
+                    trip_store[idx] = (frm, from_name, to, to_name, dep_norm, arr_norm)
+                time.sleep(args.sleep)
+
+            for trip_id, segments_map in trip_segments.items():
+                for idx in sorted(segments_map.keys()):
+                    frm, from_name, to, to_name, dep_norm, arr_norm = segments_map[idx]
                     segment_id = f"{trip_id}:{idx}"
                     records.append(
                         [
                             line_id,
                             direction,
                             args.date,
+                            trip_id,
                             segment_id,
                             frm,
                             from_name,
                             to,
                             to_name,
-                            dep,
-                            arr,
+                            dep_norm,
+                            arr_norm,
                         ]
                     )
-                time.sleep(args.sleep)
 
         processed += 1
 
@@ -236,6 +264,7 @@ def main() -> None:
             "line_id",
             "direction",
             "service_date",
+            "trip_id",
             "segment_id",
             "from_stop",
             "from_name",

@@ -1,0 +1,99 @@
+    def _build_route_timetables(self) -> None:
+        routes: Dict[str, RouteData] = {}
+        routes_by_stop: Dict[str, Set[str]] = defaultdict(set)
+        route_trip_edges: Dict[str, Dict[str, List[TripEdge]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for edge in self._static_edges:
+            if edge.line_id not in self._eligible_lines:
+                continue
+            route_trip_edges[edge.line_id][edge.trip_id].append(edge)
+
+        for line_id, trips_dict in route_trip_edges.items():
+            if not trips_dict:
+                continue
+            # sort each trip by departure
+            for edge_list in trips_dict.values():
+                edge_list.sort(key=lambda e: e.depart)
+
+            # derive canonical stop sequence from the longest trip
+            canonical_trip = max(trips_dict.values(), key=lambda lst: len(lst))
+            stops_seq: List[str] = []
+            valid = True
+            if not canonical_trip:
+                continue
+            stops_seq.append(canonical_trip[0].from_code)
+            for edge in canonical_trip:
+                if edge.from_code != stops_seq[-1]:
+                    valid = False
+                    break
+                stops_seq.append(edge.to_code)
+            if not valid or len(stops_seq) < 2:
+                continue
+            stop_to_index = {code: idx for idx, code in enumerate(stops_seq)}
+
+            route_trips: List[RouteTrip] = []
+            for trip_id, edge_list in trips_dict.items():
+                departures: List[Optional[int]] = [None] * len(stops_seq)
+                arrivals: List[Optional[int]] = [None] * len(stops_seq)
+                segment_distances: List[float] = [0.0] * (len(stops_seq) - 1)
+                trip_valid = True
+                for edge in edge_list:
+                    from_idx = stop_to_index.get(edge.from_code)
+                    to_idx = stop_to_index.get(edge.to_code)
+                    if (
+                        from_idx is None
+                        or to_idx is None
+                        or to_idx != from_idx + 1
+                    ):
+                        trip_valid = False
+                        break
+                    departures[from_idx] = edge.depart
+                    arrivals[to_idx] = edge.arrive
+                    segment_distances[from_idx] = edge.distance_km
+                if not trip_valid:
+                    continue
+                # fill in missing departures using edges
+                for idx in range(len(stops_seq) - 1):
+                    if departures[idx] is None:
+                        matching = next(
+                            (e for e in edge_list if e.from_code == stops_seq[idx]),
+                            None,
+                        )
+                        if matching is None:
+                            trip_valid = False
+                            break
+                        departures[idx] = matching.depart
+                if not trip_valid:
+                    continue
+                arrivals[0] = departures[0]
+                if any(
+                    arrivals[idx + 1] is None or departures[idx] is None
+                    or arrivals[idx + 1] <= departures[idx]
+                    for idx in range(len(stops_seq) - 1)
+                ):
+                    continue
+                route_trips.append(
+                    RouteTrip(
+                        trip_id=trip_id,
+                        departures=departures,
+                        arrivals=arrivals,
+                        segment_distances=segment_distances,
+                    )
+                )
+
+            if not route_trips:
+                continue
+            line_name = self._line_names.get(line_id, line_id)
+            routes[line_id] = RouteData(
+                line_id=line_id,
+                line_name=line_name,
+                stops=stops_seq,
+                stop_to_index=stop_to_index,
+                trips=route_trips,
+            )
+            for stop in stops_seq:
+                routes_by_stop[stop].add(line_id)
+
+        self._routes = routes
+        self._routes_by_stop = routes_by_stop

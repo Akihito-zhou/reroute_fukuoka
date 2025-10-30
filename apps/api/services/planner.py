@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import heapq
 import logging
 import math
@@ -9,10 +10,10 @@ import threading
 import time
 from bisect import bisect_left
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import yaml
 try:  # pragma: no cover - allow running as either package or module
@@ -36,6 +37,12 @@ MAX_QUEUE_SIZE = 2000
 MAX_EXPANSIONS = 120000
 REST_STOP_THRESHOLD = 15  # minutes
 DEFAULT_REALTIME_CACHE_SECONDS = 120
+MAX_LABELS_PER_STOP = 6
+MAX_TRANSFERS = 8
+ALL_QUADRANTS_MASK = 1 | 2 | 4 | 8
+BOUNDARY_BIN_COUNT = 36
+BOUNDARY_MIN_DIST_KM = 0.3
+BOUNDARY_MAX_DIST_KM = 4.0
 
 REST_SUGGESTIONS = [
     "コンビニで飲み物を補給しよう。",
@@ -121,6 +128,61 @@ class LegPlan:
     from_lon: float
     to_lat: float
     to_lon: float
+
+
+@dataclass(frozen=True)
+class JourneyLeg:
+    line_id: str
+    line_name: str
+    trip_id: str
+    from_code: str
+    to_code: str
+    depart: int
+    arrive: int
+    distance_km: float
+    stop_hops: int
+
+
+@dataclass(frozen=True)
+class Label:
+    arrival: int
+    ride_minutes: int
+    distance_km: float
+    visited: frozenset[str]
+    quadrant_mask: int
+    legs: Tuple[JourneyLeg, ...]
+    score: float
+
+
+@dataclass(frozen=True)
+class ChallengeConfig:
+    challenge_id: str
+    title: str
+    tagline: str
+    theme_tags: List[str]
+    badge: str
+    require_quadrants: bool
+    max_rounds: int
+    scoring_fn: Callable[[Label, Dict[str, float]], float]
+    dominance_fn: Callable[[Label, Dict[str, float], Label, Dict[str, float]], bool]
+    accept_fn: Callable[[Label, Dict[str, float]], bool]
+
+
+@dataclass
+class RouteTrip:
+    trip_id: str
+    departures: List[int]
+    arrivals: List[int]
+    segment_distances: List[float]
+
+
+@dataclass
+class RouteData:
+    line_id: str
+    line_name: str
+    stops: List[str]
+    stop_to_index: Dict[str, int]
+    trips: List[RouteTrip]
 
 
 @dataclass
@@ -269,6 +331,13 @@ class PlannerService:
         self._lock = threading.Lock()
         self._latest_data_file: Optional[Path] = None
         self._static_edges: List[TripEdge] = []
+        self._routes: Dict[str, RouteData] = {}
+        self._routes_by_stop: Dict[str, Set[str]] = defaultdict(set)
+        self._hakata_coord: Tuple[float, float] = (33.589, 130.420)
+        self._inner_radius_km: float = 2.0
+        self._city_boundary: List[Tuple[float, float]] = []
+        self._boundary_sequence: List[str] = []
+        self._boundary_index: Dict[str, int] = {}
 
         env_flag = os.getenv("PLANNER_ENABLE_REALTIME", "").strip().lower()
         env_enabled = env_flag in {"1", "true", "yes", "on"}
@@ -343,6 +412,10 @@ class PlannerService:
         self._quadrant_map = self._assign_quadrants()
         if not self._hakata_stops:
             raise PlannerError("博多駅周辺の停留所が stations.csv から検出できません。")
+        origin_station = self._stations.get(self._hakata_stops[0])
+        if origin_station:
+            self._hakata_coord = (origin_station.lat, origin_station.lon)
+        self._city_boundary = self._load_city_boundary()
 
     def _load_stations(self) -> Dict[str, Station]:
         path = self.data_dir / "stations.csv"
@@ -427,6 +500,132 @@ class PlannerService:
                 mapping[code] = 8  # NW
         return mapping
 
+    def _load_city_boundary(self) -> List[Tuple[float, float]]:
+        path = self.data_dir / "fukuoka_city.geojson"
+        if not path.exists():
+            return []
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            return []
+        coords: List[Tuple[float, float]] = []
+        if "features" in data:
+            features = data.get("features") or []
+            for feature in features:
+                geometry = feature.get("geometry") or {}
+                if geometry.get("type") == "Polygon":
+                    rings = geometry.get("coordinates") or []
+                    if rings:
+                        coords = [(lat, lon) for lon, lat in rings[0]]
+                        break
+                elif geometry.get("type") == "MultiPolygon":
+                    polygons = geometry.get("coordinates") or []
+                    if polygons:
+                        coords = [(lat, lon) for lon, lat in polygons[0][0]]
+                        break
+        elif "geometry" in data:
+            geometry = data.get("geometry") or {}
+            if geometry.get("type") == "Polygon":
+                rings = geometry.get("coordinates") or []
+                if rings:
+                    coords = [(lat, lon) for lon, lat in rings[0]]
+            elif geometry.get("type") == "MultiPolygon":
+                polygons = geometry.get("coordinates") or []
+                if polygons:
+                    coords = [(lat, lon) for lon, lat in polygons[0][0]]
+        return coords
+
+    def _distance_point_to_polyline(self, lat: float, lon: float) -> float:
+        if not self._city_boundary:
+            return float("inf")
+        px, py = self._project_to_plane(lat, lon)
+        min_dist = float("inf")
+        coords = self._city_boundary
+        for idx in range(len(coords)):
+            lat_a, lon_a = coords[idx]
+            lat_b, lon_b = coords[(idx + 1) % len(coords)]
+            ax, ay = self._project_to_plane(lat_a, lon_a)
+            bx, by = self._project_to_plane(lat_b, lon_b)
+            dist = self._point_segment_distance(px, py, ax, ay, bx, by)
+            if dist < min_dist:
+                min_dist = dist
+        return min_dist
+
+    @staticmethod
+    def _point_segment_distance(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
+        dx = bx - ax
+        dy = by - ay
+        if dx == 0 and dy == 0:
+            return math.hypot(px - ax, py - ay)
+        t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
+        t = max(0.0, min(1.0, t))
+        nx = ax + t * dx
+        ny = ay + t * dy
+        return math.hypot(px - nx, py - ny)
+
+    def _build_boundary_sequence(self) -> None:
+        if not self._city_boundary:
+            self._boundary_sequence = []
+            self._boundary_index = {}
+            return
+        candidate_by_bin: Dict[int, Tuple[float, str]] = {}
+        for code, station in self._stations.items():
+            dist = self._distance_point_to_polyline(station.lat, station.lon)
+            if not (BOUNDARY_MIN_DIST_KM <= dist <= BOUNDARY_MAX_DIST_KM):
+                continue
+            radius = self._distance_km(station.lat, station.lon, *self._hakata_coord)
+            if radius < self._inner_radius_km:
+                continue
+            x, y = self._project_to_plane(station.lat, station.lon)
+            if x == 0 and y == 0:
+                continue
+            angle = (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
+            bin_idx = int(angle / 360.0 * BOUNDARY_BIN_COUNT) % BOUNDARY_BIN_COUNT
+            existing = candidate_by_bin.get(bin_idx)
+            if existing is None or dist < existing[0]:
+                candidate_by_bin[bin_idx] = (dist, code)
+
+        if not candidate_by_bin:
+            self._boundary_sequence = []
+            self._boundary_index = {}
+            return
+
+        selected: List[Tuple[float, str]] = []
+        for bin_idx, (dist, code) in candidate_by_bin.items():
+            station = self._stations.get(code)
+            if not station:
+                continue
+            x, y = self._project_to_plane(station.lat, station.lon)
+            angle = (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
+            selected.append((angle, code))
+
+        selected.sort()
+        ordered_codes = [code for _, code in selected]
+
+        # ensure uniqueness and remove codes too close in angle
+        filtered: List[str] = []
+        last_angle = None
+        for angle, code in selected:
+            if filtered and last_angle is not None and abs(angle - last_angle) < (360 / BOUNDARY_BIN_COUNT) / 2:
+                continue
+            filtered.append(code)
+            last_angle = angle
+
+        if self._hakata_stops:
+            filtered = [self._hakata_stops[0]] + filtered + [self._hakata_stops[0]]
+
+        seen: Set[str] = set()
+        sequence: List[str] = []
+        for code in filtered:
+            if code in seen:
+                continue
+            sequence.append(code)
+            seen.add(code)
+
+        self._boundary_sequence = sequence
+        self._boundary_index = {code: idx for idx, code in enumerate(sequence)}
+
     def _find_latest_data_file(self) -> Optional[Path]:
         for prefix in (SEGMENTS_PREFIX, TIMETABLE_PREFIX):
             candidates = sorted(
@@ -452,6 +651,7 @@ class PlannerService:
         self._refresh_stop_schedules(force_refresh=True)
         if not self._stop_schedules:
             raise PlannerError("利用可能な便が見つかりませんでした。")
+        self._build_route_timetables()
 
     def _refresh_stop_schedules(self, *, force_refresh: bool = False) -> None:
         horizon_start = START_TIME_MINUTES
@@ -486,6 +686,120 @@ class PlannerService:
         for sched in schedules.values():
             sched.finalize()
         self._stop_schedules = schedules
+        self._build_route_timetables()
+
+    def _build_route_timetables(self) -> None:
+        routes: Dict[str, RouteData] = {}
+        routes_by_stop: Dict[str, Set[str]] = defaultdict(set)
+        trip_groups: Dict[str, Dict[str, List[TripEdge]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for edge in self._static_edges:
+            if edge.line_id not in self._eligible_lines:
+                continue
+            trip_groups[edge.line_id][edge.trip_id].append(edge)
+
+        for line_id, trips in trip_groups.items():
+            if not trips:
+                continue
+            for edge_list in trips.values():
+                edge_list.sort(key=lambda e: e.depart)
+            canonical = max(trips.values(), key=lambda lst: len(lst))
+            if not canonical:
+                continue
+            stops_seq: List[str] = [canonical[0].from_code]
+            valid = True
+            for edge in canonical:
+                if edge.from_code != stops_seq[-1]:
+                    valid = False
+                    break
+                stops_seq.append(edge.to_code)
+            if not valid or len(stops_seq) < 2:
+                continue
+            stop_to_index = {code: idx for idx, code in enumerate(stops_seq)}
+
+            route_trips: List[RouteTrip] = []
+            for trip_id, edge_list in trips.items():
+                departures: List[Optional[int]] = [None] * len(stops_seq)
+                arrivals: List[Optional[int]] = [None] * len(stops_seq)
+                segment_distances: List[float] = [0.0] * (len(stops_seq) - 1)
+                trip_valid = True
+                for edge in edge_list:
+                    from_idx = stop_to_index.get(edge.from_code)
+                    to_idx = stop_to_index.get(edge.to_code)
+                    if (
+                        from_idx is None
+                        or to_idx is None
+                        or to_idx != from_idx + 1
+                    ):
+                        trip_valid = False
+                        break
+                    departures[from_idx] = edge.depart
+                    arrivals[to_idx] = edge.arrive
+                    segment_distances[from_idx] = edge.distance_km
+                if not trip_valid:
+                    continue
+                for idx in range(len(stops_seq) - 1):
+                    if departures[idx] is None:
+                        matching = next(
+                            (e for e in edge_list if e.from_code == stops_seq[idx]),
+                            None,
+                        )
+                        if matching is None:
+                            trip_valid = False
+                            break
+                        departures[idx] = matching.depart
+                    if arrivals[idx + 1] is None:
+                        trip_valid = False
+                        break
+                    if arrivals[idx + 1] <= departures[idx]:
+                        trip_valid = False
+                        break
+                if not trip_valid:
+                    continue
+                arrivals[0] = departures[0]
+                departures_final: List[int] = []
+                arrivals_final: List[int] = []
+                trip_valid = True
+                for value in departures:
+                    if value is None:
+                        trip_valid = False
+                        break
+                    departures_final.append(int(value))
+                if not trip_valid:
+                    continue
+                for value in arrivals:
+                    if value is None:
+                        trip_valid = False
+                        break
+                    arrivals_final.append(int(value))
+                if not trip_valid:
+                    continue
+                route_trips.append(
+                    RouteTrip(
+                        trip_id=trip_id,
+                        departures=departures_final,
+                        arrivals=arrivals_final,
+                        segment_distances=segment_distances,
+                    )
+                )
+
+            if not route_trips:
+                continue
+            line_name = self._line_names.get(line_id, line_id)
+            routes[line_id] = RouteData(
+                line_id=line_id,
+                line_name=line_name,
+                stops=stops_seq,
+                stop_to_index=stop_to_index,
+                trips=route_trips,
+            )
+            for stop in stops_seq:
+                routes_by_stop[stop].add(line_id)
+
+        self._routes = routes
+        self._routes_by_stop = {stop: set(ids) for stop, ids in routes_by_stop.items()}
+        self._build_boundary_sequence()
 
     def _load_timetable_edges(self, timetable_path: Path) -> List[TripEdge]:
         rows_by_trip: Dict[Tuple[str, str, str, str], List[dict]] = defaultdict(list)
@@ -605,6 +919,248 @@ class PlannerService:
             edges.append(edge)
         return edges
 
+    def _extend_label(
+        self,
+        base: Label,
+        route: RouteData,
+        trip: RouteTrip,
+        segment_index: int,
+        depart: int,
+        arrive: int,
+    ) -> Optional[Label]:
+        from_code = route.stops[segment_index]
+        to_code = route.stops[segment_index + 1]
+        # Avoid immediate往復
+        if base.legs and base.legs[-1].from_code == to_code and base.legs[-1].to_code == from_code:
+            return None
+        if arrive <= depart:
+            return None
+        distance_inc = trip.segment_distances[segment_index]
+        visited: Set[str] = set(base.visited)
+        visited.add(to_code)
+        quadrant_mask = base.quadrant_mask | self._quadrant_map.get(to_code, 0)
+        ride_minutes = base.ride_minutes + max(0, arrive - depart)
+        distance_km = base.distance_km + distance_inc
+        legs = list(base.legs)
+        if legs and legs[-1].trip_id == trip.trip_id and legs[-1].line_id == route.line_id:
+            last = legs[-1]
+            legs[-1] = JourneyLeg(
+                line_id=last.line_id,
+                line_name=last.line_name,
+                trip_id=last.trip_id,
+                from_code=last.from_code,
+                to_code=to_code,
+                depart=last.depart,
+                arrive=arrive,
+                distance_km=last.distance_km + distance_inc,
+                stop_hops=last.stop_hops + 1,
+            )
+        else:
+            legs.append(
+                JourneyLeg(
+                    line_id=route.line_id,
+                    line_name=route.line_name,
+                    trip_id=trip.trip_id,
+                    from_code=from_code,
+                    to_code=to_code,
+                    depart=depart,
+                    arrive=arrive,
+                    distance_km=distance_inc,
+                    stop_hops=1,
+                )
+            )
+        return Label(
+            arrival=arrive,
+            ride_minutes=ride_minutes,
+            distance_km=distance_km,
+            visited=frozenset(visited),
+            quadrant_mask=quadrant_mask,
+            legs=tuple(legs),
+            score=0.0,
+        )
+
+    def _insert_label(
+        self,
+        bucket: List[Label],
+        label: Label,
+        label_metrics: Dict[str, float],
+        config: ChallengeConfig,
+        get_metrics: Callable[[Label], Dict[str, float]],
+    ) -> bool:
+        for existing in bucket:
+            existing_metrics = get_metrics(existing)
+            if config.dominance_fn(existing, existing_metrics, label, label_metrics):
+                return False
+        bucket[:] = [
+            lbl
+            for lbl in bucket
+            if not config.dominance_fn(label, label_metrics, lbl, get_metrics(lbl))
+        ]
+        bucket.append(label)
+        bucket.sort(key=lambda lbl: lbl.score, reverse=True)
+        if len(bucket) > MAX_LABELS_PER_STOP:
+            del bucket[MAX_LABELS_PER_STOP:]
+        return True
+
+    def _label_leg_to_plan(self, leg: JourneyLeg) -> LegPlan:
+        from_station = self._stations.get(leg.from_code)
+        to_station = self._stations.get(leg.to_code)
+        from_name = from_station.name if from_station else leg.from_code
+        to_name = to_station.name if to_station else leg.to_code
+        from_lat = from_station.lat if from_station else 0.0
+        from_lon = from_station.lon if from_station else 0.0
+        to_lat = to_station.lat if to_station else 0.0
+        to_lon = to_station.lon if to_station else 0.0
+        path = [(from_lat, from_lon), (to_lat, to_lon)]
+        ride_minutes = max(0, leg.arrive - leg.depart)
+        return LegPlan(
+            line_id=leg.line_id,
+            line_name=leg.line_name,
+            trip_id=leg.trip_id,
+            from_code=leg.from_code,
+            from_name=from_name,
+            to_code=leg.to_code,
+            to_name=to_name,
+            depart=leg.depart,
+            arrive=leg.arrive,
+            ride_minutes=ride_minutes,
+            distance_km=leg.distance_km,
+            stop_hops=leg.stop_hops,
+            path=path,
+            from_lat=from_lat,
+            from_lon=from_lon,
+            to_lat=to_lat,
+            to_lon=to_lon,
+        )
+
+    def _run_raptor_challenge(self, config: ChallengeConfig) -> Optional[ChallengePlan]:
+        if not self._routes:
+            return None
+
+        rounds: List[Dict[str, List[Label]]] = [
+            defaultdict(list) for _ in range(config.max_rounds + 1)
+        ]
+        metrics_cache: Dict[Tuple, Dict[str, float]] = {}
+
+        def metrics_key(label: Label) -> Tuple:
+            return self._label_metrics_key(label)
+
+        def get_metrics(label: Label) -> Dict[str, float]:
+            key = metrics_key(label)
+            metrics = metrics_cache.get(key)
+            if metrics is None:
+                metrics = self._label_metrics(label)
+                metrics_cache[key] = metrics
+            return metrics
+
+        marked_stops: Set[str] = set()
+        for stop_code in self._hakata_stops:
+            mask = self._quadrant_map.get(stop_code, 0)
+            base_label = Label(
+                arrival=START_TIME_MINUTES,
+                ride_minutes=0,
+                distance_km=0.0,
+                visited=frozenset({stop_code}),
+                quadrant_mask=mask,
+                legs=(),
+                score=0.0,
+            )
+            metrics = get_metrics(base_label)
+            scored = replace(base_label, score=config.scoring_fn(base_label, metrics))
+            metrics_cache[metrics_key(scored)] = metrics
+            rounds[0][stop_code].append(scored)
+            marked_stops.add(stop_code)
+
+        time_limit = START_TIME_MINUTES + 24 * 60
+        best_labels: List[Label] = []
+
+        for round_idx in range(config.max_rounds):
+            if not marked_stops:
+                break
+            next_marked: Set[str] = set()
+            routes_to_scan: Set[str] = set()
+            for stop in marked_stops:
+                routes_to_scan.update(self._routes_by_stop.get(stop, ()))
+            for route_id in routes_to_scan:
+                route = self._routes.get(route_id)
+                if not route:
+                    continue
+                for trip in route.trips:
+                    for from_idx, stop_code in enumerate(route.stops[:-1]):
+                        if stop_code not in marked_stops:
+                            continue
+                        labels_at_stop = rounds[round_idx].get(stop_code)
+                        if not labels_at_stop:
+                            continue
+                        for label in labels_at_stop:
+                            earliest_depart = label.arrival + TRANSFER_BUFFER_MINUTES
+                            onboard_label: Optional[Label] = None
+                            boarded = False
+                            for seg_idx in range(from_idx, len(route.stops) - 1):
+                                depart = trip.departures[seg_idx]
+                                arrive = trip.arrivals[seg_idx + 1]
+                                if not boarded and depart < earliest_depart:
+                                    continue
+                                base_label = onboard_label if boarded else label
+                                new_label = self._extend_label(
+                                    base_label, route, trip, seg_idx, depart, arrive
+                                )
+                                if new_label is None:
+                                    if boarded:
+                                        break
+                                    continue
+                                if new_label.arrival > time_limit:
+                                    break
+                                metrics = get_metrics(new_label)
+                                scored_label = replace(
+                                    new_label, score=config.scoring_fn(new_label, metrics)
+                                )
+                                metrics_cache[metrics_key(scored_label)] = metrics
+                                to_stop = route.stops[seg_idx + 1]
+                                inserted = self._insert_label(
+                                    rounds[round_idx + 1][to_stop],
+                                    scored_label,
+                                    metrics,
+                                    config,
+                                    get_metrics,
+                                )
+                                if inserted:
+                                    next_marked.add(to_stop)
+                                if (
+                                    to_stop in self._hakata_stops
+                                    and scored_label.arrival >= START_TIME_MINUTES + 120
+                                    and (
+                                        not config.require_quadrants
+                                        or scored_label.quadrant_mask == ALL_QUADRANTS_MASK
+                                    )
+                                    and config.accept_fn(scored_label, metrics)
+                                ):
+                                    best_labels.append(scored_label)
+                                onboard_label = scored_label
+                                boarded = True
+            marked_stops = next_marked
+
+        if not best_labels:
+            return None
+        best_labels.sort(key=lambda lbl: lbl.score, reverse=True)
+        selected = best_labels[0]
+        legs = [self._label_leg_to_plan(leg) for leg in selected.legs]
+        start_name = (
+            self._stations[self._hakata_stops[0]].name
+            if self._hakata_stops
+            else "博多駅"
+        )
+        return ChallengePlan(
+            challenge_id=config.challenge_id,
+            title=config.title,
+            tagline=config.tagline,
+            theme_tags=config.theme_tags,
+            badge=config.badge,
+            legs=legs,
+            start_stop_name=start_name,
+            wards=derive_quadrant_labels(legs, self._quadrant_map),
+        )
+
     def _load_segment_edges(self, segment_path: Path) -> List[TripEdge]:
         edges: List[TripEdge] = []
         with segment_path.open(newline="", encoding="utf-8") as f:
@@ -619,6 +1175,7 @@ class PlannerService:
                 "depart",
                 "arrive",
             }
+            has_trip_id = "trip_id" in (reader.fieldnames or [])
             if not required.issubset(set(reader.fieldnames or [])):
                 raise PlannerError("segments CSV の列構成が想定外です。")
             for row in reader:
@@ -637,11 +1194,12 @@ class PlannerService:
                     arrive += 1440
                 st_a = self._stations[from_code]
                 st_b = self._stations[to_code]
+                trip_identifier = str(row.get("trip_id") or row.get("segment_id") or f"{line_id}-{from_code}-{to_code}")
                 edges.append(
                     TripEdge(
                         line_id=line_id,
                         line_name=self._line_names.get(line_id, line_id),
-                        trip_id=str(row.get("segment_id") or f"{line_id}-{from_code}-{to_code}"),
+                        trip_id=trip_identifier,
                         direction=str(row.get("direction") or ""),
                         service_date=str(row.get("service_date") or ""),
                         from_code=from_code,
@@ -661,18 +1219,410 @@ class PlannerService:
 
     # ---------- challenge planners ----------
 
+    def _config_longest_duration(self) -> ChallengeConfig:
+        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+            return (
+                label.ride_minutes * 10000
+                + metrics["unique_lines"] * 600
+                + metrics["quadrants"] * 1800
+                + metrics["avg_radius"] * 160
+                + metrics["boundary_ratio"] * 2200
+                - metrics["center_ratio"] * 4000
+                - metrics["short_leg_ratio"] * 3000
+                - metrics["repeat_penalty"] * 500
+            )
+
+        def dominance(
+            a: Label,
+            metrics_a: Dict[str, float],
+            b: Label,
+            metrics_b: Dict[str, float],
+        ) -> bool:
+            if (
+                a.ride_minutes >= b.ride_minutes
+                and metrics_a["unique_lines"] >= metrics_b["unique_lines"]
+                and a.arrival <= b.arrival
+            ):
+                return a.score >= b.score
+            return False
+
+        def accept(_: Label, __: Dict[str, float]) -> bool:
+            return True
+
+        return ChallengeConfig(
+            challenge_id="longest-duration",
+            title="24時間ロングライド",
+            tagline="博多から出発し24時間ひたすら乗り継ぎ続ける耐久チャレンジ。",
+            theme_tags=["時間最大化", "耐久"],
+            badge="最長乗車",
+            require_quadrants=False,
+            max_rounds=MAX_TRANSFERS,
+            scoring_fn=scoring,
+            dominance_fn=dominance,
+            accept_fn=accept,
+        )
+
+    def _config_most_stops(self) -> ChallengeConfig:
+        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+            return (
+                metrics["unique_stops"] * 12000
+                + metrics["quadrants"] * 1200
+                + metrics["avg_radius"] * 180
+                + label.distance_km * 40
+                + metrics["boundary_ratio"] * 2500
+                - metrics["center_ratio"] * 2500
+                - metrics["repeat_penalty"] * 600
+            )
+
+        def dominance(
+            a: Label,
+            metrics_a: Dict[str, float],
+            b: Label,
+            metrics_b: Dict[str, float],
+        ) -> bool:
+            if (
+                metrics_a["unique_stops"] >= metrics_b["unique_stops"]
+                and a.arrival <= b.arrival
+            ):
+                return a.score >= b.score
+            return False
+
+        def accept(_: Label, __: Dict[str, float]) -> bool:
+            return True
+
+        return ChallengeConfig(
+            challenge_id="most-stops",
+            title="ユニーク停留所コンプリート",
+            tagline="24時間以内にできるだけ多くの停留所を踏破して博多へ戻るトレース。",
+            theme_tags=["停留所制覇", "博多起終点"],
+            badge="停留所ハンター",
+            require_quadrants=False,
+            max_rounds=MAX_TRANSFERS,
+            scoring_fn=scoring,
+            dominance_fn=dominance,
+            accept_fn=accept,
+        )
+
+    def _config_city_loop(self) -> ChallengeConfig:
+        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+            if metrics["quadrants"] < 4:
+                return (
+                    metrics["quadrants"] * 1200
+                    + metrics["avg_radius"] * 80
+                    + metrics["boundary_ratio"] * 1800
+                )
+            return (
+                metrics["hull_area"] * 120
+                + metrics["avg_radius"] * 220
+                + metrics["angle_span"] * 35
+                + metrics["turn_sum"] * 25
+                + label.distance_km * 25
+                + metrics["boundary_ratio"] * 8000
+                + metrics["boundary_progress"] * 6000
+                - metrics["center_ratio"] * 4500
+                - metrics["repeat_penalty"] * 500
+            )
+
+        def dominance(
+            a: Label,
+            metrics_a: Dict[str, float],
+            b: Label,
+            metrics_b: Dict[str, float],
+        ) -> bool:
+            if (
+                metrics_a["quadrants"] >= metrics_b["quadrants"]
+                and metrics_a["boundary_ratio"] >= metrics_b["boundary_ratio"]
+                and metrics_a["hull_area"] >= metrics_b["hull_area"]
+                and a.arrival <= b.arrival
+            ):
+                return a.score >= b.score
+            return False
+
+        def accept(label: Label, metrics: Dict[str, float]) -> bool:
+            return (
+                metrics["quadrants"] == 4
+                and metrics["hull_area"] >= 40.0
+                and metrics["avg_radius"] >= 4.0
+                and metrics["angle_span"] >= 220.0
+                and metrics["boundary_ratio"] >= 0.5
+            )
+
+        return ChallengeConfig(
+            challenge_id="city-loop",
+            title="福岡市一周トレース",
+            tagline="市内の北東・南東・南西・北西ゾーンをすべて踏んで一筆書きで戻る。",
+            theme_tags=["シティループ", "周回"],
+            badge="周回達人",
+            require_quadrants=True,
+            max_rounds=MAX_TRANSFERS + 2,
+            scoring_fn=scoring,
+            dominance_fn=dominance,
+            accept_fn=accept,
+        )
+
+    def _config_longest_distance(self) -> ChallengeConfig:
+        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+            return (
+                label.distance_km * 12500
+                + metrics["avg_radius"] * 220
+                + metrics["quadrants"] * 1500
+                + metrics["hull_area"] * 60
+                + metrics["boundary_ratio"] * 2500
+                - metrics["repeat_penalty"] * 700
+                - metrics["center_ratio"] * 3200
+            )
+
+        def dominance(
+            a: Label,
+            metrics_a: Dict[str, float],
+            b: Label,
+            metrics_b: Dict[str, float],
+        ) -> bool:
+            if (
+                a.distance_km >= b.distance_km
+                and metrics_a["avg_radius"] >= metrics_b["avg_radius"]
+                and metrics_a["boundary_ratio"] >= metrics_b["boundary_ratio"]
+                and a.arrival <= b.arrival
+            ):
+                return a.score >= b.score
+            return False
+
+        def accept(_: Label, metrics: Dict[str, float]) -> bool:
+            return True
+
+        return ChallengeConfig(
+            challenge_id="longest-distance",
+            title="距離最長ツアー",
+            tagline="24時間で博多を起終点に最長距離を駆け抜けるロングトリップ。",
+            theme_tags=["距離最大化", "耐久"],
+            badge="最長距離",
+            require_quadrants=False,
+            max_rounds=MAX_TRANSFERS + 2,
+            scoring_fn=scoring,
+            dominance_fn=dominance,
+            accept_fn=accept,
+        )
+
+    def _plan_longest_duration(self) -> ChallengePlan:
+        plan = self._run_raptor_challenge(self._config_longest_duration())
+        if plan:
+            return plan
+        return self._plan_longest_duration_beam()
+
+    def _plan_most_unique_stops(self) -> ChallengePlan:
+        plan = self._run_raptor_challenge(self._config_most_stops())
+        if plan:
+            return plan
+        return self._plan_most_unique_stops_beam()
+
+    def _plan_city_loop(self) -> ChallengePlan:
+        plan = self._run_raptor_challenge(self._config_city_loop())
+        if plan:
+            return plan
+        return self._plan_city_loop_beam()
+
+    def _plan_longest_distance(self) -> ChallengePlan:
+        plan = self._run_raptor_challenge(self._config_longest_distance())
+        if plan:
+            return plan
+        # フォールバックとして最長乗車の結果を再利用（距離優先ではないが空欄防止）
+        fallback = self._plan_longest_duration_beam()
+        return ChallengePlan(
+            challenge_id="longest-distance",
+            title="距離最長ツアー",
+            tagline="24時間で博多を起終点に最長距離を駆け抜けるロングトリップ。",
+            theme_tags=["距離最大化", "耐久"],
+            badge="最長距離",
+            legs=list(fallback.legs),
+            start_stop_name=fallback.start_stop_name,
+            wards=fallback.wards,
+        )
+
+    def _label_metrics_key(self, label: Label) -> Tuple:
+        legs_key = tuple(
+            (leg.line_id, leg.trip_id, leg.from_code, leg.to_code, leg.depart, leg.arrive)
+            for leg in label.legs
+        )
+        return (
+            label.arrival,
+            label.ride_minutes,
+            round(label.distance_km, 6),
+            label.visited,
+            label.quadrant_mask,
+            legs_key,
+        )
+
+    def _distance_km(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        r = 6371.0
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dlambda = math.radians(lon2 - lon1)
+        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        return 2 * r * math.asin(math.sqrt(a))
+
+    def _project_to_plane(self, lat: float, lon: float) -> Tuple[float, float]:
+        base_lat, base_lon = self._hakata_coord
+        lat_diff = lat - base_lat
+        lon_diff = lon - base_lon
+        cos_lat = math.cos(math.radians(base_lat))
+        x = lon_diff * cos_lat * 111.320  # km
+        y = lat_diff * 110.574  # km
+        return x, y
+
+    def _convex_hull(self, points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+        unique_points = sorted(set(points))
+        if len(unique_points) <= 1:
+            return unique_points
+
+        def cross(o, a, b):
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+        lower: List[Tuple[float, float]] = []
+        for p in unique_points:
+            while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+                lower.pop()
+            lower.append(p)
+
+        upper: List[Tuple[float, float]] = []
+        for p in reversed(unique_points):
+            while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+                upper.pop()
+            upper.append(p)
+
+        return lower[:-1] + upper[:-1]
+
+    def _polygon_area(self, coords: List[Tuple[float, float]]) -> float:
+        points = [self._project_to_plane(lat, lon) for lat, lon in coords if lat and lon]
+        hull = self._convex_hull(points)
+        if len(hull) < 3:
+            return 0.0
+        area = 0.0
+        for i in range(len(hull)):
+            x1, y1 = hull[i]
+            x2, y2 = hull[(i + 1) % len(hull)]
+            area += x1 * y2 - x2 * y1
+        return abs(area) / 2.0
+
+    def _angle_metrics(self, coords: List[Tuple[float, float]]) -> Tuple[float, float]:
+        if len(coords) < 2:
+            return 0.0, 0.0
+        angles: List[float] = []
+        for lat, lon in coords:
+            x, y = self._project_to_plane(lat, lon)
+            if x == 0.0 and y == 0.0:
+                continue
+            angle = (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
+            angles.append(angle)
+        if len(angles) < 2:
+            return 0.0, 0.0
+        total_turn = 0.0
+        for prev, nxt in zip(angles, angles[1:]):
+            diff = (nxt - prev + 180.0) % 360.0 - 180.0
+            total_turn += abs(diff)
+        sorted_angles = sorted(angles)
+        max_gap = 0.0
+        for i in range(len(sorted_angles) - 1):
+            gap = sorted_angles[i + 1] - sorted_angles[i]
+            if gap > max_gap:
+                max_gap = gap
+        wrap_gap = sorted_angles[0] + 360.0 - sorted_angles[-1]
+        if wrap_gap > max_gap:
+            max_gap = wrap_gap
+        span = 360.0 - max_gap
+        return span, total_turn
+
+    def _label_metrics(self, label: Label) -> Dict[str, float]:
+        unique_lines = len({leg.line_id for leg in label.legs})
+        unique_stops = len(label.visited)
+        quadrants = bin(label.quadrant_mask).count("1")
+
+        visited_coords: List[Tuple[float, float]] = []
+        distances: List[float] = []
+        for code in label.visited:
+            station = self._stations.get(code)
+            if not station:
+                continue
+            visited_coords.append((station.lat, station.lon))
+            distances.append(self._distance_km(station.lat, station.lon, *self._hakata_coord))
+
+        avg_radius = sum(distances) / len(distances) if distances else 0.0
+        max_radius = max(distances) if distances else 0.0
+        center_visits = sum(1 for d in distances if d < self._inner_radius_km)
+        center_ratio = (center_visits / len(distances)) if distances else 0.0
+
+        path_coords: List[Tuple[float, float]] = []
+        if label.legs:
+            first_leg = label.legs[0]
+            start_station = self._stations.get(first_leg.from_code)
+            if start_station:
+                path_coords.append((start_station.lat, start_station.lon))
+            for leg in label.legs:
+                station = self._stations.get(leg.to_code)
+                if station:
+                    path_coords.append((station.lat, station.lon))
+        else:
+            path_coords.extend(visited_coords)
+
+        hull_area = self._polygon_area(path_coords)
+        angle_span, turn_sum = self._angle_metrics(path_coords)
+
+        repeat_penalty = max(0, len(label.legs) - unique_lines)
+        short_leg_count = sum(1 for leg in label.legs if leg.distance_km < 0.5)
+        short_leg_ratio = (short_leg_count / len(label.legs)) if label.legs else 0.0
+        boundary_hits = 0
+        boundary_ratio = 0.0
+        boundary_progress = 0.0
+        boundary_set = set(self._boundary_sequence)
+        if boundary_set:
+            boundary_hits = sum(1 for stop in label.visited if stop in boundary_set)
+            boundary_ratio = boundary_hits / max(1, len(boundary_set))
+            sequence_indices: List[int] = []
+            seen_boundary: Set[str] = set()
+            for leg in label.legs:
+                for code in (leg.from_code, leg.to_code):
+                    if code in boundary_set and code not in seen_boundary:
+                        seen_boundary.add(code)
+                        idx = self._boundary_index.get(code)
+                        if idx is not None:
+                            sequence_indices.append(idx)
+            if sequence_indices:
+                sequence_indices.sort()
+                coverage = sequence_indices[-1] - sequence_indices[0]
+                total = max(1, len(self._boundary_sequence))
+                boundary_progress = min(1.0, coverage / total)
+
+        return {
+            "unique_lines": float(unique_lines),
+            "unique_stops": float(unique_stops),
+            "quadrants": float(quadrants),
+            "avg_radius": avg_radius,
+            "max_radius": max_radius,
+            "center_ratio": center_ratio,
+            "hull_area": hull_area,
+            "angle_span": angle_span,
+            "turn_sum": turn_sum,
+            "repeat_penalty": float(repeat_penalty),
+            "short_leg_ratio": short_leg_ratio,
+            "boundary_hits": float(boundary_hits),
+            "boundary_ratio": boundary_ratio,
+            "boundary_progress": boundary_progress,
+        }
+
     def _compute_challenges(self) -> Dict[str, ChallengePlan]:
         longest = self._plan_longest_duration()
         most_stops = self._plan_most_unique_stops()
         city_loop = self._plan_city_loop()
+        longest_distance = self._plan_longest_distance()
         plans = {
             "longest-duration": longest,
             "most-stops": most_stops,
             "city-loop": city_loop,
+            "longest-distance": longest_distance,
         }
         return plans
 
-    def _plan_longest_duration(self) -> ChallengePlan:
+    def _plan_longest_duration_beam(self) -> ChallengePlan:
         result = self._run_search(
             score_key="ride",
             require_unique=False,
@@ -694,7 +1644,7 @@ class PlannerService:
             wards=derive_quadrant_labels(legs, self._quadrant_map),
         )
 
-    def _plan_most_unique_stops(self) -> ChallengePlan:
+    def _plan_most_unique_stops_beam(self) -> ChallengePlan:
         result = self._run_search(
             score_key="unique",
             require_unique=True,
@@ -717,7 +1667,7 @@ class PlannerService:
             wards=derive_quadrant_labels(legs, self._quadrant_map),
         )
 
-    def _plan_city_loop(self) -> ChallengePlan:
+    def _plan_city_loop_beam(self) -> ChallengePlan:
         result = self._run_search(
             score_key="loop",
             require_unique=False,

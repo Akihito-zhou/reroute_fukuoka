@@ -179,6 +179,7 @@ class RouteTrip:
 @dataclass
 class RouteData:
     line_id: str
+    direction: str
     line_name: str
     stops: List[str]
     stop_to_index: Dict[str, int]
@@ -326,6 +327,7 @@ class PlannerService:
         self._stop_schedules: Dict[str, StopSchedule] = {}
         self._hakata_stops: List[str] = []
         self._quadrant_map: Dict[str, int] = {}
+        self._line_stop_edges: Dict[str, List[str]] = {}
         self._cache: Optional[Dict[str, ChallengePlan]] = None
         self._cache_mtime: float = 0.0
         self._lock = threading.Lock()
@@ -416,6 +418,7 @@ class PlannerService:
         if origin_station:
             self._hakata_coord = (origin_station.lat, origin_station.lon)
         self._city_boundary = self._load_city_boundary()
+        self._line_stop_edges = self._load_line_stop_edges()
 
     def _load_stations(self) -> Dict[str, Station]:
         path = self.data_dir / "stations.csv"
@@ -535,6 +538,23 @@ class PlannerService:
                 if polygons:
                     coords = [(lat, lon) for lon, lat in polygons[0][0]]
         return coords
+
+    def _load_line_stop_edges(self) -> Dict[str, List[str]]:
+        path = self.data_dir / "line_stop_edges.csv"
+        if not path.exists():
+            return {}
+        mapping: Dict[str, List[str]] = defaultdict(list)
+        with path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            required = {"line_id", "station_code"}
+            if not required.issubset(reader.fieldnames or []):
+                return {}
+            for row in reader:
+                line_id = str(row.get("line_id") or "")
+                station_code = str(row.get("station_code") or "")
+                if line_id and station_code:
+                    mapping[line_id].append(station_code)
+        return mapping
 
     def _distance_point_to_polyline(self, lat: float, lon: float) -> float:
         if not self._city_boundary:
@@ -697,25 +717,42 @@ class PlannerService:
         for edge in self._static_edges:
             if edge.line_id not in self._eligible_lines:
                 continue
-            trip_groups[edge.line_id][edge.trip_id].append(edge)
+            route_key = f"{edge.line_id}:{edge.direction}"
+            trip_groups[route_key][edge.trip_id].append(edge)
 
-        for line_id, trips in trip_groups.items():
+        for route_key, trips in trip_groups.items():
             if not trips:
+                continue
+            sample_edges = next(iter(trips.values()))
+            if not sample_edges:
+                continue
+            any_edge = sample_edges[0]
+            base_stops = self._line_stop_edges.get(any_edge.line_id, [])
+            if not base_stops:
+                continue
+            if any_edge.direction.lower() in {"down", "outbound", "reverse"}:
+                base_sequence = list(reversed(base_stops))
+            else:
+                base_sequence = list(base_stops)
+            if len(base_sequence) < 2:
+                continue
+            pair_set = {
+                (edge.from_code, edge.to_code)
+                for edges in trips.values()
+                for edge in edges
+            }
+            stops_seq: List[str] = []
+            for idx in range(len(base_sequence) - 1):
+                stops_seq.append(base_sequence[idx])
+                if (base_sequence[idx], base_sequence[idx + 1]) not in pair_set:
+                    break
+            else:
+                stops_seq.append(base_sequence[-1])
+
+            if len(stops_seq) < 2:
                 continue
             for edge_list in trips.values():
                 edge_list.sort(key=lambda e: e.depart)
-            canonical = max(trips.values(), key=lambda lst: len(lst))
-            if not canonical:
-                continue
-            stops_seq: List[str] = [canonical[0].from_code]
-            valid = True
-            for edge in canonical:
-                if edge.from_code != stops_seq[-1]:
-                    valid = False
-                    break
-                stops_seq.append(edge.to_code)
-            if not valid or len(stops_seq) < 2:
-                continue
             stop_to_index = {code: idx for idx, code in enumerate(stops_seq)}
 
             route_trips: List[RouteTrip] = []
@@ -757,6 +794,10 @@ class PlannerService:
                         break
                 if not trip_valid:
                     continue
+                if arrivals[-1] is None:
+                    arrivals[-1] = arrivals[-2]
+                if departures[-1] is None and arrivals[-1] is not None:
+                    departures[-1] = arrivals[-1]
                 arrivals[0] = departures[0]
                 departures_final: List[int] = []
                 arrivals_final: List[int] = []
@@ -786,16 +827,18 @@ class PlannerService:
 
             if not route_trips:
                 continue
-            line_name = self._line_names.get(line_id, line_id)
-            routes[line_id] = RouteData(
-                line_id=line_id,
+            any_edge = sample_edges[0]
+            line_name = self._line_names.get(any_edge.line_id, any_edge.line_id)
+            routes[route_key] = RouteData(
+                line_id=any_edge.line_id,
+                direction=any_edge.direction,
                 line_name=line_name,
                 stops=stops_seq,
                 stop_to_index=stop_to_index,
                 trips=route_trips,
             )
             for stop in stops_seq:
-                routes_by_stop[stop].add(line_id)
+                routes_by_stop[stop].add(route_key)
 
         self._routes = routes
         self._routes_by_stop = {stop: set(ids) for stop, ids in routes_by_stop.items()}

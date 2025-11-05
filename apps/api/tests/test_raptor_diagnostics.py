@@ -28,7 +28,9 @@ def planner_service() -> PlannerService:
     except PlannerError as exc:
         pytest.skip(f"Segments could not be loaded: {exc}")
     if not service._routes:
-        print("RAPTOR route tables are empty. Check segments CSV for consistent trip sequences.")
+        print(
+            "RAPTOR route tables are empty. Check segments CSV for consistent trip sequences."
+        )
         pytest.skip("RAPTOR route tables were not constructed from provided segments.")
     return service
 
@@ -88,7 +90,9 @@ def _print_plan_summary(service: PlannerService, tag: str, plan) -> None:
     }
     print(f"\n[{tag}] {summary}")
     output = DATA_DIR / f"raptor_debug_{tag.replace(' ', '_').lower()}.json"
-    output.write_text(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    output.write_text(
+        json.dumps(plan.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(f"Saved RAPTOR plan to {output}")
 
 
@@ -111,11 +115,15 @@ def test_boundary_sequence(planner_service: PlannerService) -> None:
 
 
 def test_raptor_longest_duration(planner_service: PlannerService) -> None:
-    _diagnose_config(planner_service, "Longest Duration", planner_service._config_longest_duration())
+    _diagnose_config(
+        planner_service, "Longest Duration", planner_service._config_longest_duration()
+    )
 
 
 def test_raptor_most_stops(planner_service: PlannerService) -> None:
-    _diagnose_config(planner_service, "Most Stops", planner_service._config_most_stops())
+    _diagnose_config(
+        planner_service, "Most Stops", planner_service._config_most_stops()
+    )
 
 
 def test_raptor_city_loop(planner_service: PlannerService) -> None:
@@ -123,4 +131,6 @@ def test_raptor_city_loop(planner_service: PlannerService) -> None:
 
 
 def test_raptor_longest_distance(planner_service: PlannerService) -> None:
-    _diagnose_config(planner_service, "Longest Distance", planner_service._config_longest_distance())
+    _diagnose_config(
+        planner_service, "Longest Distance", planner_service._config_longest_distance()
+    )

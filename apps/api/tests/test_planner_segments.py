@@ -37,7 +37,9 @@ def _summarize_plan(plan, filename: str, label: str) -> None:
         )
 
     output_path = DATA_DIR / filename
-    output_path.write_text(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(plan.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(f"\nSaved full {label.lower()} plan to {output_path}")
 
 
@@ -45,15 +47,73 @@ def test_longest_duration_plan(planner_service: PlannerService) -> None:
     plan = planner_service._plan_longest_duration()
     assert plan.legs, "Planner failed to produce longest-duration legs."
     _summarize_plan(plan, "debug_longest_duration.json", "Longest Duration")
+    metrics = {
+        "legs": len(plan.legs),
+        "ride_minutes": sum(leg.ride_minutes for leg in plan.legs),
+        "distance_km": sum(leg.distance_km for leg in plan.legs),
+        "unique_lines": len({leg.line_id for leg in plan.legs}),
+        "unique_stops": len(
+            {leg.from_code for leg in plan.legs} | {plan.legs[-1].to_code}
+        ),
+        "quadrants": len(
+            {planner_service._quadrant_map.get(leg.to_code, 0) for leg in plan.legs}
+        ),
+    }
+    print(f"[Longest Duration Metrics] {metrics}")
 
 
 def test_most_unique_plan(planner_service: PlannerService) -> None:
     plan = planner_service._plan_most_unique_stops()
     assert plan.legs, "Planner failed to produce most-unique-stops legs."
     _summarize_plan(plan, "debug_most_unique.json", "Most Unique Stops")
+    metrics = {
+        "legs": len(plan.legs),
+        "ride_minutes": sum(leg.ride_minutes for leg in plan.legs),
+        "distance_km": sum(leg.distance_km for leg in plan.legs),
+        "unique_lines": len({leg.line_id for leg in plan.legs}),
+        "unique_stops": len(
+            {leg.from_code for leg in plan.legs} | {plan.legs[-1].to_code}
+        ),
+        "quadrants": len(
+            {planner_service._quadrant_map.get(leg.to_code, 0) for leg in plan.legs}
+        ),
+    }
+    print(f"[Most Stops Metrics] {metrics}")
 
 
 def test_city_loop_plan(planner_service: PlannerService) -> None:
     plan = planner_service._plan_city_loop()
     assert plan.legs, "Planner failed to produce city-loop legs."
     _summarize_plan(plan, "debug_city_loop.json", "City Loop")
+    metrics = {
+        "legs": len(plan.legs),
+        "ride_minutes": sum(leg.ride_minutes for leg in plan.legs),
+        "distance_km": sum(leg.distance_km for leg in plan.legs),
+        "unique_lines": len({leg.line_id for leg in plan.legs}),
+        "unique_stops": len(
+            {leg.from_code for leg in plan.legs} | {plan.legs[-1].to_code}
+        ),
+        "quadrants": len(
+            {planner_service._quadrant_map.get(leg.to_code, 0) for leg in plan.legs}
+        ),
+    }
+    print(f"[City Loop Metrics] {metrics}")
+
+
+def test_longest_distance_plan(planner_service: PlannerService) -> None:
+    plan = planner_service._plan_longest_distance()
+    assert plan.legs, "Planner failed to produce longest-distance legs."
+    _summarize_plan(plan, "debug_longest_distance.json", "Longest Distance")
+    metrics = {
+        "legs": len(plan.legs),
+        "ride_minutes": sum(leg.ride_minutes for leg in plan.legs),
+        "distance_km": sum(leg.distance_km for leg in plan.legs),
+        "unique_lines": len({leg.line_id for leg in plan.legs}),
+        "unique_stops": len(
+            {leg.from_code for leg in plan.legs} | {plan.legs[-1].to_code}
+        ),
+        "quadrants": len(
+            {planner_service._quadrant_map.get(leg.to_code, 0) for leg in plan.legs}
+        ),
+    }
+    print(f"[Longest Distance Metrics] {metrics}")

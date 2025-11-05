@@ -1,0 +1,304 @@
+{
+  "id": "longest-distance",
+  "title": "距離最長ツアー",
+  "tagline": "24時間で博多を起終点に最長距離を駆け抜けるロングトリップ。",
+  "theme_tags": [
+    "距離最大化",
+    "耐久"
+  ],
+  "start_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+  "start_time": "07:00",
+  "total_ride_minutes": 310,
+  "total_distance_km": 52.4,
+  "transfers": 5,
+  "wards": [
+    "福岡市北西エリア"
+  ],
+  "badges": [
+    "最長距離"
+  ],
+  "legs": [
+    {
+      "sequence": 1,
+      "line_label": "2928",
+      "line_name": "西鉄バス・６６・普通・百年橋・博多駅行",
+      "from_stop": "博多駅筑紫口／西鉄バス",
+      "to_stop": "野間四角／西鉄バス",
+      "departure": "07:13",
+      "arrival": "07:13",
+      "ride_minutes": 0,
+      "distance_km": 4.12,
+      "notes": [
+        "停車数: 8"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.42478,
+            33.586774
+          ],
+          [
+            130.418063,
+            33.56078
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.586774,
+          "lon": 130.42478
+        },
+        {
+          "lat": 33.56078,
+          "lon": 130.418063
+        }
+      ],
+      "from_coord": {
+        "lat": 33.586774,
+        "lon": 130.42478
+      },
+      "to_coord": {
+        "lat": 33.56078,
+        "lon": 130.418063
+      }
+    },
+    {
+      "sequence": 2,
+      "line_label": "2726",
+      "line_name": "西鉄バス・１５１・普通・野間－皿山自動車免許試験場・桧原営行",
+      "from_stop": "野間四角／西鉄バス",
+      "to_stop": "渡辺通一丁目電気ビル共創館前／西鉄バス",
+      "departure": "07:19",
+      "arrival": "06:54",
+      "ride_minutes": 0,
+      "distance_km": 15.62,
+      "notes": [
+        "停車数: 13"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.418063,
+            33.56078
+          ],
+          [
+            130.407771,
+            33.580127
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.56078,
+          "lon": 130.418063
+        },
+        {
+          "lat": 33.580127,
+          "lon": 130.407771
+        }
+      ],
+      "from_coord": {
+        "lat": 33.56078,
+        "lon": 130.418063
+      },
+      "to_coord": {
+        "lat": 33.580127,
+        "lon": 130.407771
+      }
+    },
+    {
+      "sequence": 3,
+      "line_label": "2726",
+      "line_name": "西鉄バス・１５１・普通・野間－皿山自動車免許試験場・桧原営行",
+      "from_stop": "渡辺通一丁目電気ビル共創館前／西鉄バス",
+      "to_stop": "野間四角／西鉄バス",
+      "departure": "07:02",
+      "arrival": "05:40",
+      "ride_minutes": 0,
+      "distance_km": 15.62,
+      "notes": [
+        "停車数: 13"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.407771,
+            33.580127
+          ],
+          [
+            130.418063,
+            33.56078
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.580127,
+          "lon": 130.407771
+        },
+        {
+          "lat": 33.56078,
+          "lon": 130.418063
+        }
+      ],
+      "from_coord": {
+        "lat": 33.580127,
+        "lon": 130.407771
+      },
+      "to_coord": {
+        "lat": 33.56078,
+        "lon": 130.418063
+      }
+    },
+    {
+      "sequence": 4,
+      "line_label": "2928",
+      "line_name": "西鉄バス・６６・普通・百年橋・博多駅行",
+      "from_stop": "野間四角／西鉄バス",
+      "to_stop": "那の川(九電工前)／西鉄バス",
+      "departure": "07:10",
+      "arrival": "06:44",
+      "ride_minutes": 0,
+      "distance_km": 2.53,
+      "notes": [
+        "停車数: 4"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.418063,
+            33.56078
+          ],
+          [
+            130.415702,
+            33.57281
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.56078,
+          "lon": 130.418063
+        },
+        {
+          "lat": 33.57281,
+          "lon": 130.415702
+        }
+      ],
+      "from_coord": {
+        "lat": 33.56078,
+        "lon": 130.418063
+      },
+      "to_coord": {
+        "lat": 33.57281,
+        "lon": 130.415702
+      }
+    },
+    {
+      "sequence": 5,
+      "line_label": "2928",
+      "line_name": "西鉄バス・６６・普通・百年橋・博多駅行",
+      "from_stop": "那の川(九電工前)／西鉄バス",
+      "to_stop": "駅東三丁目／西鉄バス",
+      "departure": "08:17",
+      "arrival": "06:43",
+      "ride_minutes": 0,
+      "distance_km": 6.07,
+      "notes": [
+        "停車数: 10"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.415702,
+            33.57281
+          ],
+          [
+            130.427682,
+            33.582203
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.57281,
+          "lon": 130.415702
+        },
+        {
+          "lat": 33.582203,
+          "lon": 130.427682
+        }
+      ],
+      "from_coord": {
+        "lat": 33.57281,
+        "lon": 130.415702
+      },
+      "to_coord": {
+        "lat": 33.582203,
+        "lon": 130.427682
+      }
+    },
+    {
+      "sequence": 6,
+      "line_label": "2257",
+      "line_name": "西鉄バス・６０・普通・大橋駅行",
+      "from_stop": "駅東三丁目／西鉄バス",
+      "to_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+      "departure": "06:46",
+      "arrival": "11:56",
+      "ride_minutes": 310,
+      "distance_km": 8.41,
+      "notes": [
+        "停車数: 12"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.427682,
+            33.582203
+          ],
+          [
+            130.421197,
+            33.587089
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.582203,
+          "lon": 130.427682
+        },
+        {
+          "lat": 33.587089,
+          "lon": 130.421197
+        }
+      ],
+      "from_coord": {
+        "lat": 33.582203,
+        "lon": 130.427682
+      },
+      "to_coord": {
+        "lat": 33.587089,
+        "lon": 130.421197
+      }
+    }
+  ],
+  "rest_stops": [
+    {
+      "at": "野間四角／西鉄バス",
+      "minutes": 90,
+      "suggestion": "近くのベーカリーでテイクアウトを。"
+    },
+    {
+      "at": "那の川(九電工前)／西鉄バス",
+      "minutes": 93,
+      "suggestion": "軽くストレッチしてリフレッシュ。"
+    }
+  ]
+}

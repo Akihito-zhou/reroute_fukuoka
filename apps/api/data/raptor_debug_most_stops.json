@@ -1,0 +1,203 @@
+{
+  "id": "most-stops",
+  "title": "ユニーク停留所コンプリート",
+  "tagline": "24時間以内にできるだけ多くの停留所を踏破して博多へ戻るトレース。",
+  "theme_tags": [
+    "停留所制覇",
+    "博多起終点"
+  ],
+  "start_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+  "start_time": "07:00",
+  "total_ride_minutes": 310,
+  "total_distance_km": 32.5,
+  "transfers": 3,
+  "wards": [
+    "福岡市北西エリア"
+  ],
+  "badges": [
+    "停留所ハンター"
+  ],
+  "legs": [
+    {
+      "sequence": 1,
+      "line_label": "27",
+      "line_name": "西鉄バス・４０・普通・弥生小前・板付七行",
+      "from_stop": "駅東三丁目／西鉄バス",
+      "to_stop": "山王一丁目／西鉄バス",
+      "departure": "07:16",
+      "arrival": "07:07",
+      "ride_minutes": 0,
+      "distance_km": 8.88,
+      "notes": [
+        "停車数: 12"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.427682,
+            33.582203
+          ],
+          [
+            130.434327,
+            33.576799
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.582203,
+          "lon": 130.427682
+        },
+        {
+          "lat": 33.576799,
+          "lon": 130.434327
+        }
+      ],
+      "from_coord": {
+        "lat": 33.582203,
+        "lon": 130.427682
+      },
+      "to_coord": {
+        "lat": 33.576799,
+        "lon": 130.434327
+      }
+    },
+    {
+      "sequence": 2,
+      "line_label": "2110",
+      "line_name": "西鉄バス・６０・普通・清水町－きよみ通－山王一・博多駅筑紫口行",
+      "from_stop": "山王一丁目／西鉄バス",
+      "to_stop": "博多駅筑紫口／西鉄バス",
+      "departure": "07:12",
+      "arrival": "06:46",
+      "ride_minutes": 0,
+      "distance_km": 7.31,
+      "notes": [
+        "停車数: 12"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.434327,
+            33.576799
+          ],
+          [
+            130.42478,
+            33.586774
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.576799,
+          "lon": 130.434327
+        },
+        {
+          "lat": 33.586774,
+          "lon": 130.42478
+        }
+      ],
+      "from_coord": {
+        "lat": 33.576799,
+        "lon": 130.434327
+      },
+      "to_coord": {
+        "lat": 33.586774,
+        "lon": 130.42478
+      }
+    },
+    {
+      "sequence": 3,
+      "line_label": "2928",
+      "line_name": "西鉄バス・６６・普通・百年橋・博多駅行",
+      "from_stop": "博多駅筑紫口／西鉄バス",
+      "to_stop": "駅東三丁目／西鉄バス",
+      "departure": "06:58",
+      "arrival": "06:43",
+      "ride_minutes": 0,
+      "distance_km": 12.72,
+      "notes": [
+        "停車数: 20"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.42478,
+            33.586774
+          ],
+          [
+            130.427682,
+            33.582203
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.586774,
+          "lon": 130.42478
+        },
+        {
+          "lat": 33.582203,
+          "lon": 130.427682
+        }
+      ],
+      "from_coord": {
+        "lat": 33.586774,
+        "lon": 130.42478
+      },
+      "to_coord": {
+        "lat": 33.582203,
+        "lon": 130.427682
+      }
+    },
+    {
+      "sequence": 4,
+      "line_label": "3480",
+      "line_name": "西鉄バス・４４・普通・山王－博多駅－住吉・天神行",
+      "from_stop": "駅東三丁目／西鉄バス",
+      "to_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+      "departure": "06:46",
+      "arrival": "11:56",
+      "ride_minutes": 310,
+      "distance_km": 3.62,
+      "notes": [
+        "停車数: 5"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.427682,
+            33.582203
+          ],
+          [
+            130.421197,
+            33.587089
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.582203,
+          "lon": 130.427682
+        },
+        {
+          "lat": 33.587089,
+          "lon": 130.421197
+        }
+      ],
+      "from_coord": {
+        "lat": 33.582203,
+        "lon": 130.427682
+      },
+      "to_coord": {
+        "lat": 33.587089,
+        "lon": 130.421197
+      }
+    }
+  ],
+  "rest_stops": []
+}

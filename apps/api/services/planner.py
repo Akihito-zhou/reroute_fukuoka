@@ -40,9 +40,11 @@ DEFAULT_REALTIME_CACHE_SECONDS = 120
 MAX_LABELS_PER_STOP = 6
 MAX_TRANSFERS = 8
 ALL_QUADRANTS_MASK = 1 | 2 | 4 | 8
-BOUNDARY_BIN_COUNT = 36
+BOUNDARY_BIN_COUNT = 18
 BOUNDARY_MIN_DIST_KM = 0.3
 BOUNDARY_MAX_DIST_KM = 4.0
+MAX_ROUTES_FOR_RAPTOR = 120
+MAX_TRIPS_PER_ROUTE = 25
 
 REST_SUGGESTIONS = [
     "コンビニで飲み物を補給しよう。",
@@ -720,7 +722,7 @@ class PlannerService:
             route_key = f"{edge.line_id}:{edge.direction}"
             trip_groups[route_key][edge.trip_id].append(edge)
 
-        for route_key, trips in trip_groups.items():
+        for route_idx, (route_key, trips) in enumerate(trip_groups.items()):
             if not trips:
                 continue
             sample_edges = next(iter(trips.values()))
@@ -751,6 +753,8 @@ class PlannerService:
 
             if len(stops_seq) < 2:
                 continue
+            if len(stops_seq) > 15:
+                stops_seq = stops_seq[:15]
             for edge_list in trips.values():
                 edge_list.sort(key=lambda e: e.depart)
             stop_to_index = {code: idx for idx, code in enumerate(stops_seq)}
@@ -829,6 +833,11 @@ class PlannerService:
                 continue
             any_edge = sample_edges[0]
             line_name = self._line_names.get(any_edge.line_id, any_edge.line_id)
+            # limit number of trips per route (prefer先出発)
+            if len(route_trips) > MAX_TRIPS_PER_ROUTE:
+                route_trips.sort(key=lambda trip: trip.departures[0])
+                route_trips = route_trips[:MAX_TRIPS_PER_ROUTE]
+
             routes[route_key] = RouteData(
                 line_id=any_edge.line_id,
                 direction=any_edge.direction,
@@ -839,6 +848,8 @@ class PlannerService:
             )
             for stop in stops_seq:
                 routes_by_stop[stop].add(route_key)
+            if len(routes) >= MAX_ROUTES_FOR_RAPTOR:
+                break
 
         self._routes = routes
         self._routes_by_stop = {stop: set(ids) for stop, ids in routes_by_stop.items()}
@@ -1299,7 +1310,7 @@ class PlannerService:
             theme_tags=["時間最大化", "耐久"],
             badge="最長乗車",
             require_quadrants=False,
-            max_rounds=MAX_TRANSFERS,
+            max_rounds=min(5, MAX_TRANSFERS),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
@@ -1340,7 +1351,7 @@ class PlannerService:
             theme_tags=["停留所制覇", "博多起終点"],
             badge="停留所ハンター",
             require_quadrants=False,
-            max_rounds=MAX_TRANSFERS,
+            max_rounds=min(5, MAX_TRANSFERS),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
@@ -1384,10 +1395,10 @@ class PlannerService:
         def accept(label: Label, metrics: Dict[str, float]) -> bool:
             return (
                 metrics["quadrants"] == 4
-                and metrics["hull_area"] >= 40.0
-                and metrics["avg_radius"] >= 4.0
-                and metrics["angle_span"] >= 220.0
-                and metrics["boundary_ratio"] >= 0.5
+                and metrics["hull_area"] >= 25.0
+                and metrics["avg_radius"] >= 3.0
+                and metrics["angle_span"] >= 180.0
+                and metrics["boundary_ratio"] >= 0.3
             )
 
         return ChallengeConfig(
@@ -1397,7 +1408,7 @@ class PlannerService:
             theme_tags=["シティループ", "周回"],
             badge="周回達人",
             require_quadrants=True,
-            max_rounds=MAX_TRANSFERS + 2,
+            max_rounds=min(6, MAX_TRANSFERS + 2),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
@@ -1440,7 +1451,7 @@ class PlannerService:
             theme_tags=["距離最大化", "耐久"],
             badge="最長距離",
             require_quadrants=False,
-            max_rounds=MAX_TRANSFERS + 2,
+            max_rounds=min(6, MAX_TRANSFERS + 2),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,

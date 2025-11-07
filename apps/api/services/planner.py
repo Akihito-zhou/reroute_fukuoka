@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import yaml
+
 try:  # pragma: no cover - allow running as either package or module
     from ..clients.ekispert_bus import EkispertBusClient
 except ImportError:  # pragma: no cover
@@ -40,9 +41,11 @@ DEFAULT_REALTIME_CACHE_SECONDS = 120
 MAX_LABELS_PER_STOP = 6
 MAX_TRANSFERS = 8
 ALL_QUADRANTS_MASK = 1 | 2 | 4 | 8
-BOUNDARY_BIN_COUNT = 36
+BOUNDARY_BIN_COUNT = 18
 BOUNDARY_MIN_DIST_KM = 0.3
 BOUNDARY_MAX_DIST_KM = 4.0
+MAX_ROUTES_FOR_RAPTOR = 120
+MAX_TRIPS_PER_ROUTE = 25
 
 REST_SUGGESTIONS = [
     "コンビニで飲み物を補給しよう。",
@@ -217,7 +220,8 @@ class ChallengePlan:
                     ],
                 },
                 "path": [
-                    {"lat": round(lat, 6), "lon": round(lon, 6)} for lat, lon in leg.path
+                    {"lat": round(lat, 6), "lon": round(lon, 6)}
+                    for lat, lon in leg.path
                 ],
                 "from_coord": {
                     "lat": round(leg.from_lat, 6),
@@ -344,7 +348,9 @@ class PlannerService:
         env_flag = os.getenv("PLANNER_ENABLE_REALTIME", "").strip().lower()
         env_enabled = env_flag in {"1", "true", "yes", "on"}
         self._realtime_cache_seconds = max(30, realtime_cache_seconds)
-        desired_realtime = enable_realtime if enable_realtime is not None else env_enabled
+        desired_realtime = (
+            enable_realtime if enable_realtime is not None else env_enabled
+        )
         api_key_value = api_key or os.getenv("EKISPERT_API_KEY")
         client = (
             EkispertBusClient(api_key_value)
@@ -477,9 +483,7 @@ class PlannerService:
             target_lat, target_lon = 33.589, 130.420
             ranked = sorted(
                 self._stations.values(),
-                key=lambda s: (
-                    (s.lat - target_lat) ** 2 + (s.lon - target_lon) ** 2
-                ),
+                key=lambda s: ((s.lat - target_lat) ** 2 + (s.lon - target_lon) ** 2),
             )
             results = [s.code for s in ranked[:5]]
         return results
@@ -573,7 +577,9 @@ class PlannerService:
         return min_dist
 
     @staticmethod
-    def _point_segment_distance(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
+    def _point_segment_distance(
+        px: float, py: float, ax: float, ay: float, bx: float, by: float
+    ) -> float:
         dx = bx - ax
         dy = by - ay
         if dx == 0 and dy == 0:
@@ -627,7 +633,11 @@ class PlannerService:
         filtered: List[str] = []
         last_angle = None
         for angle, code in selected:
-            if filtered and last_angle is not None and abs(angle - last_angle) < (360 / BOUNDARY_BIN_COUNT) / 2:
+            if (
+                filtered
+                and last_angle is not None
+                and abs(angle - last_angle) < (360 / BOUNDARY_BIN_COUNT) / 2
+            ):
                 continue
             filtered.append(code)
             last_angle = angle
@@ -659,7 +669,9 @@ class PlannerService:
 
     def _load_edges(self, data_path: Optional[Path]) -> None:
         if data_path is None:
-            raise PlannerError("segments_YYYYMMDD.csv または timetable_YYYYMMDD.csv が見つかりません。")
+            raise PlannerError(
+                "segments_YYYYMMDD.csv または timetable_YYYYMMDD.csv が見つかりません。"
+            )
         if data_path.name.startswith(SEGMENTS_PREFIX):
             edges = self._load_segment_edges(data_path)
         else:
@@ -702,7 +714,9 @@ class PlannerService:
         for edge in edges:
             schedules[edge.from_code].add_edge(edge)
         if not schedules and edges:
-            logger.warning("Edges available but no schedules were constructed; check data integrity.")
+            logger.warning(
+                "Edges available but no schedules were constructed; check data integrity."
+            )
         for sched in schedules.values():
             sched.finalize()
         self._stop_schedules = schedules
@@ -720,7 +734,7 @@ class PlannerService:
             route_key = f"{edge.line_id}:{edge.direction}"
             trip_groups[route_key][edge.trip_id].append(edge)
 
-        for route_key, trips in trip_groups.items():
+        for route_idx, (route_key, trips) in enumerate(trip_groups.items()):
             if not trips:
                 continue
             sample_edges = next(iter(trips.values()))
@@ -751,6 +765,8 @@ class PlannerService:
 
             if len(stops_seq) < 2:
                 continue
+            if len(stops_seq) > 15:
+                stops_seq = stops_seq[:15]
             for edge_list in trips.values():
                 edge_list.sort(key=lambda e: e.depart)
             stop_to_index = {code: idx for idx, code in enumerate(stops_seq)}
@@ -764,11 +780,7 @@ class PlannerService:
                 for edge in edge_list:
                     from_idx = stop_to_index.get(edge.from_code)
                     to_idx = stop_to_index.get(edge.to_code)
-                    if (
-                        from_idx is None
-                        or to_idx is None
-                        or to_idx != from_idx + 1
-                    ):
+                    if from_idx is None or to_idx is None or to_idx != from_idx + 1:
                         trip_valid = False
                         break
                     departures[from_idx] = edge.depart
@@ -829,6 +841,11 @@ class PlannerService:
                 continue
             any_edge = sample_edges[0]
             line_name = self._line_names.get(any_edge.line_id, any_edge.line_id)
+            # limit number of trips per route (prefer先出発)
+            if len(route_trips) > MAX_TRIPS_PER_ROUTE:
+                route_trips.sort(key=lambda trip: trip.departures[0])
+                route_trips = route_trips[:MAX_TRIPS_PER_ROUTE]
+
             routes[route_key] = RouteData(
                 line_id=any_edge.line_id,
                 direction=any_edge.direction,
@@ -839,6 +856,8 @@ class PlannerService:
             )
             for stop in stops_seq:
                 routes_by_stop[stop].add(route_key)
+            if len(routes) >= MAX_ROUTES_FOR_RAPTOR:
+                break
 
         self._routes = routes
         self._routes_by_stop = {stop: set(ids) for stop, ids in routes_by_stop.items()}
@@ -974,7 +993,11 @@ class PlannerService:
         from_code = route.stops[segment_index]
         to_code = route.stops[segment_index + 1]
         # Avoid immediate往復
-        if base.legs and base.legs[-1].from_code == to_code and base.legs[-1].to_code == from_code:
+        if (
+            base.legs
+            and base.legs[-1].from_code == to_code
+            and base.legs[-1].to_code == from_code
+        ):
             return None
         if arrive <= depart:
             return None
@@ -985,7 +1008,11 @@ class PlannerService:
         ride_minutes = base.ride_minutes + max(0, arrive - depart)
         distance_km = base.distance_km + distance_inc
         legs = list(base.legs)
-        if legs and legs[-1].trip_id == trip.trip_id and legs[-1].line_id == route.line_id:
+        if (
+            legs
+            and legs[-1].trip_id == trip.trip_id
+            and legs[-1].line_id == route.line_id
+        ):
             last = legs[-1]
             legs[-1] = JourneyLeg(
                 line_id=last.line_id,
@@ -1156,7 +1183,8 @@ class PlannerService:
                                     break
                                 metrics = get_metrics(new_label)
                                 scored_label = replace(
-                                    new_label, score=config.scoring_fn(new_label, metrics)
+                                    new_label,
+                                    score=config.scoring_fn(new_label, metrics),
                                 )
                                 metrics_cache[metrics_key(scored_label)] = metrics
                                 to_stop = route.stops[seg_idx + 1]
@@ -1174,7 +1202,8 @@ class PlannerService:
                                     and scored_label.arrival >= START_TIME_MINUTES + 120
                                     and (
                                         not config.require_quadrants
-                                        or scored_label.quadrant_mask == ALL_QUADRANTS_MASK
+                                        or scored_label.quadrant_mask
+                                        == ALL_QUADRANTS_MASK
                                     )
                                     and config.accept_fn(scored_label, metrics)
                                 ):
@@ -1237,7 +1266,11 @@ class PlannerService:
                     arrive += 1440
                 st_a = self._stations[from_code]
                 st_b = self._stations[to_code]
-                trip_identifier = str(row.get("trip_id") or row.get("segment_id") or f"{line_id}-{from_code}-{to_code}")
+                trip_identifier = str(
+                    row.get("trip_id")
+                    or row.get("segment_id")
+                    or f"{line_id}-{from_code}-{to_code}"
+                )
                 edges.append(
                     TripEdge(
                         line_id=line_id,
@@ -1299,7 +1332,7 @@ class PlannerService:
             theme_tags=["時間最大化", "耐久"],
             badge="最長乗車",
             require_quadrants=False,
-            max_rounds=MAX_TRANSFERS,
+            max_rounds=min(5, MAX_TRANSFERS),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
@@ -1340,7 +1373,7 @@ class PlannerService:
             theme_tags=["停留所制覇", "博多起終点"],
             badge="停留所ハンター",
             require_quadrants=False,
-            max_rounds=MAX_TRANSFERS,
+            max_rounds=min(5, MAX_TRANSFERS),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
@@ -1384,10 +1417,10 @@ class PlannerService:
         def accept(label: Label, metrics: Dict[str, float]) -> bool:
             return (
                 metrics["quadrants"] == 4
-                and metrics["hull_area"] >= 40.0
-                and metrics["avg_radius"] >= 4.0
-                and metrics["angle_span"] >= 220.0
-                and metrics["boundary_ratio"] >= 0.5
+                and metrics["hull_area"] >= 25.0
+                and metrics["avg_radius"] >= 3.0
+                and metrics["angle_span"] >= 180.0
+                and metrics["boundary_ratio"] >= 0.3
             )
 
         return ChallengeConfig(
@@ -1397,7 +1430,7 @@ class PlannerService:
             theme_tags=["シティループ", "周回"],
             badge="周回達人",
             require_quadrants=True,
-            max_rounds=MAX_TRANSFERS + 2,
+            max_rounds=min(6, MAX_TRANSFERS + 2),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
@@ -1440,7 +1473,7 @@ class PlannerService:
             theme_tags=["距離最大化", "耐久"],
             badge="最長距離",
             require_quadrants=False,
-            max_rounds=MAX_TRANSFERS + 2,
+            max_rounds=min(6, MAX_TRANSFERS + 2),
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
@@ -1483,7 +1516,14 @@ class PlannerService:
 
     def _label_metrics_key(self, label: Label) -> Tuple:
         legs_key = tuple(
-            (leg.line_id, leg.trip_id, leg.from_code, leg.to_code, leg.depart, leg.arrive)
+            (
+                leg.line_id,
+                leg.trip_id,
+                leg.from_code,
+                leg.to_code,
+                leg.depart,
+                leg.arrive,
+            )
             for leg in label.legs
         )
         return (
@@ -1501,7 +1541,10 @@ class PlannerService:
         phi2 = math.radians(lat2)
         dphi = math.radians(lat2 - lat1)
         dlambda = math.radians(lon2 - lon1)
-        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        a = (
+            math.sin(dphi / 2) ** 2
+            + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        )
         return 2 * r * math.asin(math.sqrt(a))
 
     def _project_to_plane(self, lat: float, lon: float) -> Tuple[float, float]:
@@ -1513,7 +1556,9 @@ class PlannerService:
         y = lat_diff * 110.574  # km
         return x, y
 
-    def _convex_hull(self, points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    def _convex_hull(
+        self, points: List[Tuple[float, float]]
+    ) -> List[Tuple[float, float]]:
         unique_points = sorted(set(points))
         if len(unique_points) <= 1:
             return unique_points
@@ -1536,7 +1581,9 @@ class PlannerService:
         return lower[:-1] + upper[:-1]
 
     def _polygon_area(self, coords: List[Tuple[float, float]]) -> float:
-        points = [self._project_to_plane(lat, lon) for lat, lon in coords if lat and lon]
+        points = [
+            self._project_to_plane(lat, lon) for lat, lon in coords if lat and lon
+        ]
         hull = self._convex_hull(points)
         if len(hull) < 3:
             return 0.0
@@ -1587,7 +1634,9 @@ class PlannerService:
             if not station:
                 continue
             visited_coords.append((station.lat, station.lon))
-            distances.append(self._distance_km(station.lat, station.lon, *self._hakata_coord))
+            distances.append(
+                self._distance_km(station.lat, station.lon, *self._hakata_coord)
+            )
 
         avg_radius = sum(distances) / len(distances) if distances else 0.0
         max_radius = max(distances) if distances else 0.0
@@ -1834,9 +1883,7 @@ class PlannerService:
                 new_path = state.path + (edge,)
                 new_time = edge.arrive
                 new_ride = state.ride_minutes + edge.ride_minutes
-                new_mask = state.quadrant_mask | self._quadrant_map.get(
-                    edge.to_code, 0
-                )
+                new_mask = state.quadrant_mask | self._quadrant_map.get(edge.to_code, 0)
 
                 if require_unique:
                     new_visited = frozenset(set(state.visited) | {edge.to_code})
@@ -1844,7 +1891,11 @@ class PlannerService:
                     new_visited = state.visited
                 new_unique = len(new_visited)
 
-                if require_quadrants and new_mask == state.quadrant_mask and not state.path:
+                if (
+                    require_quadrants
+                    and new_mask == state.quadrant_mask
+                    and not state.path
+                ):
                     # encourage exploring outward first
                     continue
 
@@ -1871,9 +1922,7 @@ class PlannerService:
         scores.sort(key=lambda tup: tup[0], reverse=True)
         return scores[0][1]
 
-    def _next_edges(
-        self, stop_code: str, earliest_depart: int
-    ) -> List[TripEdge]:
+    def _next_edges(self, stop_code: str, earliest_depart: int) -> List[TripEdge]:
         schedule = self._stop_schedules.get(stop_code)
         if not schedule or not schedule.departures:
             return []

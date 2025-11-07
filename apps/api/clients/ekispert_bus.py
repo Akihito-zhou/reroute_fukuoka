@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any
 
 import requests
 
@@ -21,10 +22,10 @@ def _join_url(base: str, path: str) -> str:
 
 @dataclass(frozen=True)
 class TripQuery:
-    line_id: Optional[str] = None
-    trip_id: Optional[str] = None
-    operation_line_code: Optional[str] = None
-    direction: Optional[str] = None
+    line_id: str | None = None
+    trip_id: str | None = None
+    operation_line_code: str | None = None
+    direction: str | None = None
 
 
 class EkispertBusClient:
@@ -37,10 +38,10 @@ class EkispertBusClient:
 
     def __init__(
         self,
-        api_key: Optional[str],
+        api_key: str | None,
         *,
         base_url: str = DEFAULT_BASE_URL,
-        session: Optional[requests.Session] = None,
+        session: requests.Session | None = None,
         timeout: float = 6.0,
         max_retries: int = 2,
         retry_backoff: float = 0.6,
@@ -56,8 +57,8 @@ class EkispertBusClient:
         self,
         queries: Sequence[TripQuery] | None = None,
         *,
-        extra_params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        extra_params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Fetch realtime trip status for a collection of queries.
 
         The Ekispert API supports a limited set of query parameters per request;
@@ -66,7 +67,7 @@ class EkispertBusClient:
         if not self._api_key:
             logger.debug("Realtime trip fetch skipped: missing API key.")
             return []
-        params: Dict[str, Any] = {"key": self._api_key}
+        params: dict[str, Any] = {"key": self._api_key}
         if extra_params:
             params.update(extra_params)
         if queries:
@@ -96,8 +97,8 @@ class EkispertBusClient:
         self,
         *,
         pattern: bool = False,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Call the realtime course endpoints (extreme or pattern)."""
         if not self._api_key:
             logger.debug("Realtime course fetch skipped: missing API key.")
@@ -115,7 +116,7 @@ class EkispertBusClient:
             return result
         return {}
 
-    def _request_json(self, url: str, params: Dict[str, Any]) -> Any:
+    def _request_json(self, url: str, params: dict[str, Any]) -> Any:
         """Execute GET with retries and parse JSON; returns {} / [] on errors."""
         for attempt in range(self._max_retries + 1):
             try:

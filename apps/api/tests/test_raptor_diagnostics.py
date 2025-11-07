@@ -4,13 +4,12 @@ from pathlib import Path
 import pytest
 
 from services.planner import (
-    PlannerError,
-    PlannerService,
+    START_TIME_MINUTES,
     JourneyLeg,
     Label,
-    START_TIME_MINUTES,
+    PlannerError,
+    PlannerService,
 )
-
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 

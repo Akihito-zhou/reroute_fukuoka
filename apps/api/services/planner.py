@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import csv
-import json
 import heapq
+import json
 import logging
 import math
 import os
@@ -10,10 +10,10 @@ import threading
 import time
 from bisect import bisect_left
 from collections import Counter, defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import yaml
 
@@ -97,8 +97,8 @@ class TripEdge:
 
 @dataclass
 class StopSchedule:
-    departures: List[int] = field(default_factory=list)
-    edges: List[TripEdge] = field(default_factory=list)
+    departures: list[int] = field(default_factory=list)
+    edges: list[TripEdge] = field(default_factory=list)
 
     def add_edge(self, edge: TripEdge) -> None:
         self.departures.append(edge.depart)
@@ -107,7 +107,7 @@ class StopSchedule:
     def finalize(self) -> None:
         if not self.departures:
             return
-        combined = sorted(zip(self.departures, self.edges), key=lambda pair: pair[0])
+        combined = sorted(zip(self.departures, self.edges, strict=False), key=lambda pair: pair[0])
         self.departures = [d for d, _ in combined]
         self.edges = [e for _, e in combined]
 
@@ -126,7 +126,7 @@ class LegPlan:
     ride_minutes: int
     distance_km: float
     stop_hops: int
-    path: List[Tuple[float, float]]
+    path: list[tuple[float, float]]
     from_lat: float
     from_lon: float
     to_lat: float
@@ -153,7 +153,7 @@ class Label:
     distance_km: float
     visited: frozenset[str]
     quadrant_mask: int
-    legs: Tuple[JourneyLeg, ...]
+    legs: tuple[JourneyLeg, ...]
     score: float
 
 
@@ -162,21 +162,21 @@ class ChallengeConfig:
     challenge_id: str
     title: str
     tagline: str
-    theme_tags: List[str]
+    theme_tags: list[str]
     badge: str
     require_quadrants: bool
     max_rounds: int
-    scoring_fn: Callable[[Label, Dict[str, float]], float]
-    dominance_fn: Callable[[Label, Dict[str, float], Label, Dict[str, float]], bool]
-    accept_fn: Callable[[Label, Dict[str, float]], bool]
+    scoring_fn: Callable[[Label, dict[str, float]], float]
+    dominance_fn: Callable[[Label, dict[str, float], Label, dict[str, float]], bool]
+    accept_fn: Callable[[Label, dict[str, float]], bool]
 
 
 @dataclass
 class RouteTrip:
     trip_id: str
-    departures: List[int]
-    arrivals: List[int]
-    segment_distances: List[float]
+    departures: list[int]
+    arrivals: list[int]
+    segment_distances: list[float]
 
 
 @dataclass
@@ -184,9 +184,9 @@ class RouteData:
     line_id: str
     direction: str
     line_name: str
-    stops: List[str]
-    stop_to_index: Dict[str, int]
-    trips: List[RouteTrip]
+    stops: list[str]
+    stop_to_index: dict[str, int]
+    trips: list[RouteTrip]
 
 
 @dataclass
@@ -194,11 +194,11 @@ class ChallengePlan:
     challenge_id: str
     title: str
     tagline: str
-    theme_tags: List[str]
+    theme_tags: list[str]
     badge: str
-    legs: List[LegPlan]
+    legs: list[LegPlan]
     start_stop_name: str
-    wards: List[str]
+    wards: list[str]
 
     def to_dict(self) -> dict:
         legs_payload = [
@@ -260,7 +260,7 @@ class SearchState:
     ride_minutes: int = field(compare=False)
     current_time: int = field(compare=False)
     stop_code: str = field(compare=False)
-    path: Tuple[TripEdge, ...] = field(compare=False, default=())
+    path: tuple[TripEdge, ...] = field(compare=False, default=())
     visited: frozenset[str] = field(compare=False, default_factory=frozenset)
     unique_count: int = field(compare=False, default=0)
     quadrant_mask: int = field(compare=False, default=0)
@@ -290,9 +290,9 @@ def format_minutes(total_minutes: int) -> str:
     return f"+{days}d {base}"
 
 
-def generate_rest_stops(legs: Sequence[LegPlan]) -> List[dict]:
+def generate_rest_stops(legs: Sequence[LegPlan]) -> list[dict]:
     suggestions = []
-    for prev, nxt in zip(legs, legs[1:]):
+    for prev, nxt in zip(legs, legs[1:], strict=False):
         idle = nxt.depart - prev.arrive
         if idle >= REST_STOP_THRESHOLD:
             idx = sum(ord(ch) for ch in prev.to_code) % len(REST_SUGGESTIONS)
@@ -320,30 +320,30 @@ class PlannerService:
         self,
         data_dir: Path | None = None,
         *,
-        enable_realtime: Optional[bool] = None,
-        api_key: Optional[str] = None,
+        enable_realtime: bool | None = None,
+        api_key: str | None = None,
         realtime_cache_seconds: int = DEFAULT_REALTIME_CACHE_SECONDS,
     ):
         self.data_dir = Path(data_dir) if data_dir else DATA_DIR
-        self._stations: Dict[str, Station] = {}
-        self._line_names: Dict[str, str] = {}
+        self._stations: dict[str, Station] = {}
+        self._line_names: dict[str, str] = {}
         self._eligible_lines: set[str] = set()
-        self._stop_schedules: Dict[str, StopSchedule] = {}
-        self._hakata_stops: List[str] = []
-        self._quadrant_map: Dict[str, int] = {}
-        self._line_stop_edges: Dict[str, List[str]] = {}
-        self._cache: Optional[Dict[str, ChallengePlan]] = None
+        self._stop_schedules: dict[str, StopSchedule] = {}
+        self._hakata_stops: list[str] = []
+        self._quadrant_map: dict[str, int] = {}
+        self._line_stop_edges: dict[str, list[str]] = {}
+        self._cache: dict[str, ChallengePlan] | None = None
         self._cache_mtime: float = 0.0
         self._lock = threading.Lock()
-        self._latest_data_file: Optional[Path] = None
-        self._static_edges: List[TripEdge] = []
-        self._routes: Dict[str, RouteData] = {}
-        self._routes_by_stop: Dict[str, Set[str]] = defaultdict(set)
-        self._hakata_coord: Tuple[float, float] = (33.589, 130.420)
+        self._latest_data_file: Path | None = None
+        self._static_edges: list[TripEdge] = []
+        self._routes: dict[str, RouteData] = {}
+        self._routes_by_stop: dict[str, set[str]] = defaultdict(set)
+        self._hakata_coord: tuple[float, float] = (33.589, 130.420)
         self._inner_radius_km: float = 2.0
-        self._city_boundary: List[Tuple[float, float]] = []
-        self._boundary_sequence: List[str] = []
-        self._boundary_index: Dict[str, int] = {}
+        self._city_boundary: list[tuple[float, float]] = []
+        self._boundary_sequence: list[str] = []
+        self._boundary_index: dict[str, int] = {}
 
         env_flag = os.getenv("PLANNER_ENABLE_REALTIME", "").strip().lower()
         env_enabled = env_flag in {"1", "true", "yes", "on"}
@@ -359,7 +359,8 @@ class PlannerService:
         )
         if desired_realtime and not api_key_value:
             logger.warning(
-                "Planner realtime mode requested but EKISPERT_API_KEY is missing; falling back to static data."
+                "Planner realtime mode requested but EKISPERT_API_KEY is missing; "
+                "falling back to static data."
             )
         self._timetable_manager = RealtimeTimetableManager(
             client,
@@ -371,7 +372,7 @@ class PlannerService:
 
     # ---------- public API ----------
 
-    def list_challenges(self) -> List[dict]:
+    def list_challenges(self) -> list[dict]:
         plans = self._ensure_plans()
         return [plan.to_dict() for plan in plans.values()]
 
@@ -383,7 +384,7 @@ class PlannerService:
 
     # ---------- bootstrap ----------
 
-    def _ensure_plans(self) -> Dict[str, ChallengePlan]:
+    def _ensure_plans(self) -> dict[str, ChallengePlan]:
         with self._lock:
             latest = self._find_latest_data_file()
             latest_mtime = latest.stat().st_mtime if latest else 0.0
@@ -426,11 +427,11 @@ class PlannerService:
         self._city_boundary = self._load_city_boundary()
         self._line_stop_edges = self._load_line_stop_edges()
 
-    def _load_stations(self) -> Dict[str, Station]:
+    def _load_stations(self) -> dict[str, Station]:
         path = self.data_dir / "stations.csv"
         if not path.exists():
             raise PlannerError("stations.csv が見つかりません。")
-        stations: Dict[str, Station] = {}
+        stations: dict[str, Station] = {}
         with path.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -454,10 +455,10 @@ class PlannerService:
             raise PlannerError("stations.csv に有効なデータがありません。")
         return stations
 
-    def _load_line_meta(self) -> Tuple[Dict[str, str], set[str]]:
+    def _load_line_meta(self) -> tuple[dict[str, str], set[str]]:
         path = self.data_dir / "freepass_lines.yml"
         data = load_yaml(path)
-        line_names: Dict[str, str] = {}
+        line_names: dict[str, str] = {}
         eligible = set()
         for row in data.get("freepass_lines", []):
             line_id = str(row.get("line_id"))
@@ -471,7 +472,7 @@ class PlannerService:
             raise PlannerError("freepass_lines.yml に eligible な路線がありません。")
         return line_names, eligible
 
-    def _detect_hakata_stops(self) -> List[str]:
+    def _detect_hakata_stops(self) -> list[str]:
         keywords = ["博多駅", "博多ﾊﾞｽﾀｰﾐﾅﾙ", "博多駅前", "博多ﾊﾞｽﾀ"]
         results = [
             code
@@ -488,12 +489,12 @@ class PlannerService:
             results = [s.code for s in ranked[:5]]
         return results
 
-    def _assign_quadrants(self) -> Dict[str, int]:
+    def _assign_quadrants(self) -> dict[str, int]:
         lats = [s.lat for s in self._stations.values()]
         lons = [s.lon for s in self._stations.values()]
         lat_mid = (min(lats) + max(lats)) / 2
         lon_mid = (min(lons) + max(lons)) / 2
-        mapping: Dict[str, int] = {}
+        mapping: dict[str, int] = {}
         for code, st in self._stations.items():
             north = st.lat >= lat_mid
             east = st.lon >= lon_mid
@@ -507,7 +508,7 @@ class PlannerService:
                 mapping[code] = 8  # NW
         return mapping
 
-    def _load_city_boundary(self) -> List[Tuple[float, float]]:
+    def _load_city_boundary(self) -> list[tuple[float, float]]:
         path = self.data_dir / "fukuoka_city.geojson"
         if not path.exists():
             return []
@@ -516,7 +517,7 @@ class PlannerService:
                 data = json.load(f)
         except json.JSONDecodeError:
             return []
-        coords: List[Tuple[float, float]] = []
+        coords: list[tuple[float, float]] = []
         if "features" in data:
             features = data.get("features") or []
             for feature in features:
@@ -543,11 +544,11 @@ class PlannerService:
                     coords = [(lat, lon) for lon, lat in polygons[0][0]]
         return coords
 
-    def _load_line_stop_edges(self) -> Dict[str, List[str]]:
+    def _load_line_stop_edges(self) -> dict[str, list[str]]:
         path = self.data_dir / "line_stop_edges.csv"
         if not path.exists():
             return {}
-        mapping: Dict[str, List[str]] = defaultdict(list)
+        mapping: dict[str, list[str]] = defaultdict(list)
         with path.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             required = {"line_id", "station_code"}
@@ -595,7 +596,7 @@ class PlannerService:
             self._boundary_sequence = []
             self._boundary_index = {}
             return
-        candidate_by_bin: Dict[int, Tuple[float, str]] = {}
+        candidate_by_bin: dict[int, tuple[float, str]] = {}
         for code, station in self._stations.items():
             dist = self._distance_point_to_polyline(station.lat, station.lon)
             if not (BOUNDARY_MIN_DIST_KM <= dist <= BOUNDARY_MAX_DIST_KM):
@@ -617,8 +618,8 @@ class PlannerService:
             self._boundary_index = {}
             return
 
-        selected: List[Tuple[float, str]] = []
-        for bin_idx, (dist, code) in candidate_by_bin.items():
+        selected: list[tuple[float, str]] = []
+        for _bin_idx, (_dist, code) in candidate_by_bin.items():
             station = self._stations.get(code)
             if not station:
                 continue
@@ -627,10 +628,9 @@ class PlannerService:
             selected.append((angle, code))
 
         selected.sort()
-        ordered_codes = [code for _, code in selected]
 
         # ensure uniqueness and remove codes too close in angle
-        filtered: List[str] = []
+        filtered: list[str] = []
         last_angle = None
         for angle, code in selected:
             if (
@@ -645,8 +645,8 @@ class PlannerService:
         if self._hakata_stops:
             filtered = [self._hakata_stops[0]] + filtered + [self._hakata_stops[0]]
 
-        seen: Set[str] = set()
-        sequence: List[str] = []
+        seen: set[str] = set()
+        sequence: list[str] = []
         for code in filtered:
             if code in seen:
                 continue
@@ -656,7 +656,7 @@ class PlannerService:
         self._boundary_sequence = sequence
         self._boundary_index = {code: idx for idx, code in enumerate(sequence)}
 
-    def _find_latest_data_file(self) -> Optional[Path]:
+    def _find_latest_data_file(self) -> Path | None:
         for prefix in (SEGMENTS_PREFIX, TIMETABLE_PREFIX):
             candidates = sorted(
                 self.data_dir.glob(f"{prefix}*.csv"),
@@ -667,7 +667,7 @@ class PlannerService:
                 return candidates[0]
         return None
 
-    def _load_edges(self, data_path: Optional[Path]) -> None:
+    def _load_edges(self, data_path: Path | None) -> None:
         if data_path is None:
             raise PlannerError(
                 "segments_YYYYMMDD.csv または timetable_YYYYMMDD.csv が見つかりません。"
@@ -688,7 +688,7 @@ class PlannerService:
     def _refresh_stop_schedules(self, *, force_refresh: bool = False) -> None:
         horizon_start = START_TIME_MINUTES
         horizon_end = START_TIME_MINUTES + 24 * 60
-        edges: List[TripEdge] = []
+        edges: list[TripEdge] = []
         if self._timetable_manager:
             edges = self._timetable_manager.get_edges_for_window(
                 horizon_start,
@@ -710,7 +710,7 @@ class PlannerService:
             )
             self._stop_schedules = {}
             return
-        schedules: Dict[str, StopSchedule] = defaultdict(StopSchedule)
+        schedules: dict[str, StopSchedule] = defaultdict(StopSchedule)
         for edge in edges:
             schedules[edge.from_code].add_edge(edge)
         if not schedules and edges:
@@ -723,9 +723,9 @@ class PlannerService:
         self._build_route_timetables()
 
     def _build_route_timetables(self) -> None:
-        routes: Dict[str, RouteData] = {}
-        routes_by_stop: Dict[str, Set[str]] = defaultdict(set)
-        trip_groups: Dict[str, Dict[str, List[TripEdge]]] = defaultdict(
+        routes: dict[str, RouteData] = {}
+        routes_by_stop: dict[str, set[str]] = defaultdict(set)
+        trip_groups: dict[str, dict[str, list[TripEdge]]] = defaultdict(
             lambda: defaultdict(list)
         )
         for edge in self._static_edges:
@@ -734,7 +734,7 @@ class PlannerService:
             route_key = f"{edge.line_id}:{edge.direction}"
             trip_groups[route_key][edge.trip_id].append(edge)
 
-        for route_idx, (route_key, trips) in enumerate(trip_groups.items()):
+        for _route_idx, (route_key, trips) in enumerate(trip_groups.items()):
             if not trips:
                 continue
             sample_edges = next(iter(trips.values()))
@@ -755,7 +755,7 @@ class PlannerService:
                 for edges in trips.values()
                 for edge in edges
             }
-            stops_seq: List[str] = []
+            stops_seq: list[str] = []
             for idx in range(len(base_sequence) - 1):
                 stops_seq.append(base_sequence[idx])
                 if (base_sequence[idx], base_sequence[idx + 1]) not in pair_set:
@@ -771,11 +771,11 @@ class PlannerService:
                 edge_list.sort(key=lambda e: e.depart)
             stop_to_index = {code: idx for idx, code in enumerate(stops_seq)}
 
-            route_trips: List[RouteTrip] = []
+            route_trips: list[RouteTrip] = []
             for trip_id, edge_list in trips.items():
-                departures: List[Optional[int]] = [None] * len(stops_seq)
-                arrivals: List[Optional[int]] = [None] * len(stops_seq)
-                segment_distances: List[float] = [0.0] * (len(stops_seq) - 1)
+                departures: list[int | None] = [None] * len(stops_seq)
+                arrivals: list[int | None] = [None] * len(stops_seq)
+                segment_distances: list[float] = [0.0] * (len(stops_seq) - 1)
                 trip_valid = True
                 for edge in edge_list:
                     from_idx = stop_to_index.get(edge.from_code)
@@ -811,8 +811,8 @@ class PlannerService:
                 if departures[-1] is None and arrivals[-1] is not None:
                     departures[-1] = arrivals[-1]
                 arrivals[0] = departures[0]
-                departures_final: List[int] = []
-                arrivals_final: List[int] = []
+                departures_final: list[int] = []
+                arrivals_final: list[int] = []
                 trip_valid = True
                 for value in departures:
                     if value is None:
@@ -863,8 +863,8 @@ class PlannerService:
         self._routes_by_stop = {stop: set(ids) for stop, ids in routes_by_stop.items()}
         self._build_boundary_sequence()
 
-    def _load_timetable_edges(self, timetable_path: Path) -> List[TripEdge]:
-        rows_by_trip: Dict[Tuple[str, str, str, str], List[dict]] = defaultdict(list)
+    def _load_timetable_edges(self, timetable_path: Path) -> list[TripEdge]:
+        rows_by_trip: dict[tuple[str, str, str, str], list[dict]] = defaultdict(list)
         with timetable_path.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -888,9 +888,10 @@ class PlannerService:
                 rows_by_trip[key].append(row)
         if not rows_by_trip:
             raise PlannerError(
-                "時刻表から有効な trip データを読み込めませんでした。freepass 路線と日付を確認してください。"
+                "時刻表から有効な trip データを読み込めませんでした。"
+                "freepass 路線と日付を確認してください。"
             )
-        edges: List[TripEdge] = []
+        edges: list[TripEdge] = []
         for (line_id, direction, service_date, trip_id), rows in rows_by_trip.items():
             rows.sort(key=lambda r: r["_seq"])
             edges.extend(
@@ -911,16 +912,16 @@ class PlannerService:
         service_date: str,
         trip_id: str,
         rows: Sequence[dict],
-    ) -> List[TripEdge]:
-        edges: List[TripEdge] = []
+    ) -> list[TripEdge]:
+        edges: list[TripEdge] = []
         try:
             base_dt = datetime.strptime(service_date or "19700101", "%Y%m%d")
         except ValueError:
             base_dt = datetime.strptime("19700101", "%Y%m%d")
-        prev_minutes: Optional[int] = None
+        prev_minutes: int | None = None
         rollover = 0
 
-        def normalize_time(raw: Optional[str]) -> Optional[int]:
+        def normalize_time(raw: str | None) -> int | None:
             nonlocal prev_minutes, rollover
             if not raw:
                 return None
@@ -989,7 +990,7 @@ class PlannerService:
         segment_index: int,
         depart: int,
         arrive: int,
-    ) -> Optional[Label]:
+    ) -> Label | None:
         from_code = route.stops[segment_index]
         to_code = route.stops[segment_index + 1]
         # Avoid immediate往復
@@ -1002,7 +1003,7 @@ class PlannerService:
         if arrive <= depart:
             return None
         distance_inc = trip.segment_distances[segment_index]
-        visited: Set[str] = set(base.visited)
+        visited: set[str] = set(base.visited)
         visited.add(to_code)
         quadrant_mask = base.quadrant_mask | self._quadrant_map.get(to_code, 0)
         ride_minutes = base.ride_minutes + max(0, arrive - depart)
@@ -1051,11 +1052,11 @@ class PlannerService:
 
     def _insert_label(
         self,
-        bucket: List[Label],
+        bucket: list[Label],
         label: Label,
-        label_metrics: Dict[str, float],
+        label_metrics: dict[str, float],
         config: ChallengeConfig,
-        get_metrics: Callable[[Label], Dict[str, float]],
+        get_metrics: Callable[[Label], dict[str, float]],
     ) -> bool:
         for existing in bucket:
             existing_metrics = get_metrics(existing)
@@ -1103,19 +1104,19 @@ class PlannerService:
             to_lon=to_lon,
         )
 
-    def _run_raptor_challenge(self, config: ChallengeConfig) -> Optional[ChallengePlan]:
+    def _run_raptor_challenge(self, config: ChallengeConfig) -> ChallengePlan | None:
         if not self._routes:
             return None
 
-        rounds: List[Dict[str, List[Label]]] = [
+        rounds: list[dict[str, list[Label]]] = [
             defaultdict(list) for _ in range(config.max_rounds + 1)
         ]
-        metrics_cache: Dict[Tuple, Dict[str, float]] = {}
+        metrics_cache: dict[tuple, dict[str, float]] = {}
 
-        def metrics_key(label: Label) -> Tuple:
+        def metrics_key(label: Label) -> tuple:
             return self._label_metrics_key(label)
 
-        def get_metrics(label: Label) -> Dict[str, float]:
+        def get_metrics(label: Label) -> dict[str, float]:
             key = metrics_key(label)
             metrics = metrics_cache.get(key)
             if metrics is None:
@@ -1123,7 +1124,7 @@ class PlannerService:
                 metrics_cache[key] = metrics
             return metrics
 
-        marked_stops: Set[str] = set()
+        marked_stops: set[str] = set()
         for stop_code in self._hakata_stops:
             mask = self._quadrant_map.get(stop_code, 0)
             base_label = Label(
@@ -1142,13 +1143,13 @@ class PlannerService:
             marked_stops.add(stop_code)
 
         time_limit = START_TIME_MINUTES + 24 * 60
-        best_labels: List[Label] = []
+        best_labels: list[Label] = []
 
         for round_idx in range(config.max_rounds):
             if not marked_stops:
                 break
-            next_marked: Set[str] = set()
-            routes_to_scan: Set[str] = set()
+            next_marked: set[str] = set()
+            routes_to_scan: set[str] = set()
             for stop in marked_stops:
                 routes_to_scan.update(self._routes_by_stop.get(stop, ()))
             for route_id in routes_to_scan:
@@ -1164,7 +1165,7 @@ class PlannerService:
                             continue
                         for label in labels_at_stop:
                             earliest_depart = label.arrival + TRANSFER_BUFFER_MINUTES
-                            onboard_label: Optional[Label] = None
+                            onboard_label: Label | None = None
                             boarded = False
                             for seg_idx in range(from_idx, len(route.stops) - 1):
                                 depart = trip.departures[seg_idx]
@@ -1233,8 +1234,8 @@ class PlannerService:
             wards=derive_quadrant_labels(legs, self._quadrant_map),
         )
 
-    def _load_segment_edges(self, segment_path: Path) -> List[TripEdge]:
-        edges: List[TripEdge] = []
+    def _load_segment_edges(self, segment_path: Path) -> list[TripEdge]:
+        edges: list[TripEdge] = []
         with segment_path.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             required = {
@@ -1247,7 +1248,6 @@ class PlannerService:
                 "depart",
                 "arrive",
             }
-            has_trip_id = "trip_id" in (reader.fieldnames or [])
             if not required.issubset(set(reader.fieldnames or [])):
                 raise PlannerError("segments CSV の列構成が想定外です。")
             for row in reader:
@@ -1296,7 +1296,7 @@ class PlannerService:
     # ---------- challenge planners ----------
 
     def _config_longest_duration(self) -> ChallengeConfig:
-        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+        def scoring(label: Label, metrics: dict[str, float]) -> float:
             return (
                 label.ride_minutes * 10000
                 + metrics["unique_lines"] * 600
@@ -1310,9 +1310,9 @@ class PlannerService:
 
         def dominance(
             a: Label,
-            metrics_a: Dict[str, float],
+            metrics_a: dict[str, float],
             b: Label,
-            metrics_b: Dict[str, float],
+            metrics_b: dict[str, float],
         ) -> bool:
             if (
                 a.ride_minutes >= b.ride_minutes
@@ -1322,7 +1322,7 @@ class PlannerService:
                 return a.score >= b.score
             return False
 
-        def accept(_: Label, __: Dict[str, float]) -> bool:
+        def accept(_: Label, __: dict[str, float]) -> bool:
             return True
 
         return ChallengeConfig(
@@ -1339,7 +1339,7 @@ class PlannerService:
         )
 
     def _config_most_stops(self) -> ChallengeConfig:
-        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+        def scoring(label: Label, metrics: dict[str, float]) -> float:
             return (
                 metrics["unique_stops"] * 12000
                 + metrics["quadrants"] * 1200
@@ -1352,9 +1352,9 @@ class PlannerService:
 
         def dominance(
             a: Label,
-            metrics_a: Dict[str, float],
+            metrics_a: dict[str, float],
             b: Label,
-            metrics_b: Dict[str, float],
+            metrics_b: dict[str, float],
         ) -> bool:
             if (
                 metrics_a["unique_stops"] >= metrics_b["unique_stops"]
@@ -1363,7 +1363,7 @@ class PlannerService:
                 return a.score >= b.score
             return False
 
-        def accept(_: Label, __: Dict[str, float]) -> bool:
+        def accept(_: Label, __: dict[str, float]) -> bool:
             return True
 
         return ChallengeConfig(
@@ -1380,7 +1380,7 @@ class PlannerService:
         )
 
     def _config_city_loop(self) -> ChallengeConfig:
-        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+        def scoring(label: Label, metrics: dict[str, float]) -> float:
             if metrics["quadrants"] < 4:
                 return (
                     metrics["quadrants"] * 1200
@@ -1401,9 +1401,9 @@ class PlannerService:
 
         def dominance(
             a: Label,
-            metrics_a: Dict[str, float],
+            metrics_a: dict[str, float],
             b: Label,
-            metrics_b: Dict[str, float],
+            metrics_b: dict[str, float],
         ) -> bool:
             if (
                 metrics_a["quadrants"] >= metrics_b["quadrants"]
@@ -1414,7 +1414,7 @@ class PlannerService:
                 return a.score >= b.score
             return False
 
-        def accept(label: Label, metrics: Dict[str, float]) -> bool:
+        def accept(label: Label, metrics: dict[str, float]) -> bool:
             return (
                 metrics["quadrants"] == 4
                 and metrics["hull_area"] >= 25.0
@@ -1437,7 +1437,7 @@ class PlannerService:
         )
 
     def _config_longest_distance(self) -> ChallengeConfig:
-        def scoring(label: Label, metrics: Dict[str, float]) -> float:
+        def scoring(label: Label, metrics: dict[str, float]) -> float:
             return (
                 label.distance_km * 12500
                 + metrics["avg_radius"] * 220
@@ -1450,9 +1450,9 @@ class PlannerService:
 
         def dominance(
             a: Label,
-            metrics_a: Dict[str, float],
+            metrics_a: dict[str, float],
             b: Label,
-            metrics_b: Dict[str, float],
+            metrics_b: dict[str, float],
         ) -> bool:
             if (
                 a.distance_km >= b.distance_km
@@ -1463,7 +1463,7 @@ class PlannerService:
                 return a.score >= b.score
             return False
 
-        def accept(_: Label, metrics: Dict[str, float]) -> bool:
+        def accept(_: Label, metrics: dict[str, float]) -> bool:
             return True
 
         return ChallengeConfig(
@@ -1514,7 +1514,7 @@ class PlannerService:
             wards=fallback.wards,
         )
 
-    def _label_metrics_key(self, label: Label) -> Tuple:
+    def _label_metrics_key(self, label: Label) -> tuple:
         legs_key = tuple(
             (
                 leg.line_id,
@@ -1547,7 +1547,7 @@ class PlannerService:
         )
         return 2 * r * math.asin(math.sqrt(a))
 
-    def _project_to_plane(self, lat: float, lon: float) -> Tuple[float, float]:
+    def _project_to_plane(self, lat: float, lon: float) -> tuple[float, float]:
         base_lat, base_lon = self._hakata_coord
         lat_diff = lat - base_lat
         lon_diff = lon - base_lon
@@ -1557,8 +1557,8 @@ class PlannerService:
         return x, y
 
     def _convex_hull(
-        self, points: List[Tuple[float, float]]
-    ) -> List[Tuple[float, float]]:
+        self, points: list[tuple[float, float]]
+    ) -> list[tuple[float, float]]:
         unique_points = sorted(set(points))
         if len(unique_points) <= 1:
             return unique_points
@@ -1566,13 +1566,13 @@ class PlannerService:
         def cross(o, a, b):
             return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
-        lower: List[Tuple[float, float]] = []
+        lower: list[tuple[float, float]] = []
         for p in unique_points:
             while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
                 lower.pop()
             lower.append(p)
 
-        upper: List[Tuple[float, float]] = []
+        upper: list[tuple[float, float]] = []
         for p in reversed(unique_points):
             while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
                 upper.pop()
@@ -1580,7 +1580,7 @@ class PlannerService:
 
         return lower[:-1] + upper[:-1]
 
-    def _polygon_area(self, coords: List[Tuple[float, float]]) -> float:
+    def _polygon_area(self, coords: list[tuple[float, float]]) -> float:
         points = [
             self._project_to_plane(lat, lon) for lat, lon in coords if lat and lon
         ]
@@ -1594,10 +1594,10 @@ class PlannerService:
             area += x1 * y2 - x2 * y1
         return abs(area) / 2.0
 
-    def _angle_metrics(self, coords: List[Tuple[float, float]]) -> Tuple[float, float]:
+    def _angle_metrics(self, coords: list[tuple[float, float]]) -> tuple[float, float]:
         if len(coords) < 2:
             return 0.0, 0.0
-        angles: List[float] = []
+        angles: list[float] = []
         for lat, lon in coords:
             x, y = self._project_to_plane(lat, lon)
             if x == 0.0 and y == 0.0:
@@ -1607,7 +1607,7 @@ class PlannerService:
         if len(angles) < 2:
             return 0.0, 0.0
         total_turn = 0.0
-        for prev, nxt in zip(angles, angles[1:]):
+        for prev, nxt in zip(angles, angles[1:], strict=False):
             diff = (nxt - prev + 180.0) % 360.0 - 180.0
             total_turn += abs(diff)
         sorted_angles = sorted(angles)
@@ -1622,13 +1622,13 @@ class PlannerService:
         span = 360.0 - max_gap
         return span, total_turn
 
-    def _label_metrics(self, label: Label) -> Dict[str, float]:
+    def _label_metrics(self, label: Label) -> dict[str, float]:
         unique_lines = len({leg.line_id for leg in label.legs})
         unique_stops = len(label.visited)
         quadrants = bin(label.quadrant_mask).count("1")
 
-        visited_coords: List[Tuple[float, float]] = []
-        distances: List[float] = []
+        visited_coords: list[tuple[float, float]] = []
+        distances: list[float] = []
         for code in label.visited:
             station = self._stations.get(code)
             if not station:
@@ -1643,7 +1643,7 @@ class PlannerService:
         center_visits = sum(1 for d in distances if d < self._inner_radius_km)
         center_ratio = (center_visits / len(distances)) if distances else 0.0
 
-        path_coords: List[Tuple[float, float]] = []
+        path_coords: list[tuple[float, float]] = []
         if label.legs:
             first_leg = label.legs[0]
             start_station = self._stations.get(first_leg.from_code)
@@ -1669,8 +1669,8 @@ class PlannerService:
         if boundary_set:
             boundary_hits = sum(1 for stop in label.visited if stop in boundary_set)
             boundary_ratio = boundary_hits / max(1, len(boundary_set))
-            sequence_indices: List[int] = []
-            seen_boundary: Set[str] = set()
+            sequence_indices: list[int] = []
+            seen_boundary: set[str] = set()
             for leg in label.legs:
                 for code in (leg.from_code, leg.to_code):
                     if code in boundary_set and code not in seen_boundary:
@@ -1701,7 +1701,7 @@ class PlannerService:
             "boundary_progress": boundary_progress,
         }
 
-    def _compute_challenges(self) -> Dict[str, ChallengePlan]:
+    def _compute_challenges(self) -> dict[str, ChallengePlan]:
         longest = self._plan_longest_duration()
         most_stops = self._plan_most_unique_stops()
         city_loop = self._plan_city_loop()
@@ -1811,14 +1811,14 @@ class PlannerService:
         score_key: str,
         require_unique: bool,
         require_quadrants: bool,
-        max_queue: Optional[int] = None,
-        max_expansions: Optional[int] = None,
-        max_branch: Optional[int] = None,
-    ) -> Optional[SearchState]:
+        max_queue: int | None = None,
+        max_expansions: int | None = None,
+        max_branch: int | None = None,
+    ) -> SearchState | None:
         if not self._stop_schedules:
             raise PlannerError("時刻表がロードされていません。")
         time_limit = START_TIME_MINUTES + 24 * 60
-        pq: List[Tuple[float, int, SearchState]] = []
+        pq: list[tuple[float, int, SearchState]] = []
         counter = 0
         queue_limit = max_queue or MAX_QUEUE_SIZE
         expansion_limit = max_expansions or MAX_EXPANSIONS
@@ -1832,8 +1832,8 @@ class PlannerService:
             else:
                 heapq.heappush(pq, (priority, counter, state))
 
-        best_key_score: Dict[Tuple[str, int], float] = {}
-        results: List[SearchState] = []
+        best_key_score: dict[tuple[str, int], float] = {}
+        results: list[SearchState] = []
 
         for stop_code in self._hakata_stops:
             visited = frozenset({stop_code}) if require_unique else frozenset()
@@ -1922,7 +1922,7 @@ class PlannerService:
         scores.sort(key=lambda tup: tup[0], reverse=True)
         return scores[0][1]
 
-    def _next_edges(self, stop_code: str, earliest_depart: int) -> List[TripEdge]:
+    def _next_edges(self, stop_code: str, earliest_depart: int) -> list[TripEdge]:
         schedule = self._stop_schedules.get(stop_code)
         if not schedule or not schedule.departures:
             return []
@@ -1959,7 +1959,7 @@ class PlannerService:
         repeat_penalty_value = repeat_penalty * 8
         return float(state.ride_minutes) + diversity_bonus - repeat_penalty_value
 
-    def _parse_segment_minutes(self, raw: Optional[str]) -> Optional[int]:
+    def _parse_segment_minutes(self, raw: str | None) -> int | None:
         if not raw:
             return None
         text = raw.strip()
@@ -1973,7 +1973,7 @@ class PlannerService:
         return hours * 60 + minutes
 
 
-def parse_datetime(raw: str, base_dt: datetime) -> Optional[datetime]:
+def parse_datetime(raw: str, base_dt: datetime) -> datetime | None:
     text = raw.strip()
     fmts = [
         "%Y%m%d%H%M%S",
@@ -2004,10 +2004,10 @@ def parse_datetime(raw: str, base_dt: datetime) -> Optional[datetime]:
     return None
 
 
-def collapse_edges(edges: Sequence[TripEdge]) -> List[LegPlan]:
+def collapse_edges(edges: Sequence[TripEdge]) -> list[LegPlan]:
     if not edges:
         return []
-    legs: List[LegPlan] = []
+    legs: list[LegPlan] = []
     buffer = [edges[0]]
     for edge in edges[1:]:
         last = buffer[-1]
@@ -2026,7 +2026,7 @@ def _compress_buffer(buffer: Sequence[TripEdge]) -> LegPlan:
     last = buffer[-1]
     distance = sum(edge.distance_km for edge in buffer)
     ride_minutes = last.arrive - first.depart
-    path: List[Tuple[float, float]] = []
+    path: list[tuple[float, float]] = []
     for idx, edge in enumerate(buffer):
         if idx == 0:
             path.append((edge.from_lat, edge.from_lon))
@@ -2053,8 +2053,8 @@ def _compress_buffer(buffer: Sequence[TripEdge]) -> LegPlan:
 
 
 def derive_quadrant_labels(
-    legs: Sequence[LegPlan], quadrant_map: Dict[str, int]
-) -> List[str]:
+    legs: Sequence[LegPlan], quadrant_map: dict[str, int]
+) -> list[str]:
     labels = {1: "北東", 2: "南東", 4: "南西", 8: "北西"}
     visited = Counter()
     for leg in legs:

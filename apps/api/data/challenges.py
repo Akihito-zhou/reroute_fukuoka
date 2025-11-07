@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Fallback challenge definitions used when the dynamic planner cannot run.
 
@@ -8,6 +6,8 @@ The entries intentionally mirror the three challenge archetypes:
   2. Most unique stops while returning to Hakata.
   3. City loop that touches every quadrant of Fukuoka city.
 """
+
+from __future__ import annotations
 
 from typing import TypedDict
 
@@ -150,7 +150,10 @@ CHALLENGES: list[Challenge] = [
     {
         "id": "most-stops",
         "title": "ユニーク停留所コンプリート",
-        "tagline": "24時間以内にできるだけ多くの停留所を巡り、最後に博多へ戻るストップハンティング。",
+        "tagline": (
+            "24時間以内にできるだけ多くの停留所を巡り、最後に博多へ戻る"
+            "ストップハンティング。"
+        ),
         "theme_tags": ["停留所制覇", "ルート探索"],
         "start_stop": "博多駅前A",
         "start_time": "07:00",

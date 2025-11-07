@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -12,7 +11,7 @@ from services import PlannerError, PlannerService
 
 router = APIRouter(prefix="/api/v1")
 _planner_service: PlannerService | None = None
-_debug_cache: Dict[str, dict] = {}
+_debug_cache: dict[str, dict] = {}
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 DEBUG_FILES = {
@@ -69,7 +68,7 @@ def get_challenge(challenge_id: str) -> ChallengeDetailOut:
     raise HTTPException(status_code=404, detail="Challenge not found")
 
 
-def _load_debug_challenge(challenge_id: str) -> Optional[dict]:
+def _load_debug_challenge(challenge_id: str) -> dict | None:
     if challenge_id in _debug_cache:
         return _debug_cache[challenge_id]
     path = DEBUG_FILES.get(challenge_id)
@@ -84,8 +83,8 @@ def _load_debug_challenge(challenge_id: str) -> Optional[dict]:
     return payload
 
 
-def _load_all_debug_challenges() -> List[dict]:
-    challenges: List[dict] = []
+def _load_all_debug_challenges() -> list[dict]:
+    challenges: list[dict] = []
     for challenge_id in DEBUG_FILES.keys():
         payload = _load_debug_challenge(challenge_id)
         if payload:

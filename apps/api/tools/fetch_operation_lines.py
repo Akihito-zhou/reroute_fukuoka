@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Collect 'bus line' hints (LINE=xxx) by sampling station pairs and calling
 /v1/json/search/course/extreme, then extract bus segments' InsideInformation.
@@ -12,9 +11,15 @@ Cache : apps/api/tools/.cache_extreme_pairs.jsonl  (one JSON per request)
 Note  : Uses LINE=... from InsideInformation.navigatorTransportation as internal line id.
 """
 
-import os, sys, csv, json, time, math, random
-from collections import defaultdict
-from typing import List, Dict, Any, Tuple
+import csv
+import json
+import math
+import os
+import random
+import sys
+import time
+from typing import Any
+
 import requests
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -40,7 +45,7 @@ def haversine(lat1, lon1, lat2, lon2):
     return 2 * R * math.asin(math.sqrt(a))
 
 
-def load_stations() -> List[Dict[str, Any]]:
+def load_stations() -> list[dict[str, Any]]:
     if not os.path.exists(IN_STATIONS):
         print(f"❌ 未找到输入文件: {IN_STATIONS}", file=sys.stderr)
         sys.exit(1)
@@ -51,7 +56,7 @@ def load_stations() -> List[Dict[str, Any]]:
             try:
                 row["lat"] = float(row.get("lat") or 0)
                 row["lon"] = float(row.get("lon") or 0)
-            except:
+            except (TypeError, ValueError):
                 row["lat"] = 0.0
                 row["lon"] = 0.0
             if row.get("ekispert_station_code"):
@@ -59,7 +64,7 @@ def load_stations() -> List[Dict[str, Any]]:
     return rows
 
 
-def nearest_neighbors(stations: List[Dict[str, Any]], k=3) -> Dict[str, List[str]]:
+def nearest_neighbors(stations: list[dict[str, Any]], k=3) -> dict[str, list[str]]:
     """Return for each station code, k nearest other station codes."""
     # simple O(n^2) for moderate n; OK for a few thousand with sampling
     coords = [(s["ekispert_station_code"], s["lat"], s["lon"]) for s in stations]
@@ -82,10 +87,10 @@ def cached_pair_key(a: str, b: str) -> str:
     return f"{a}:{b}"
 
 
-def iter_courses_from_cache() -> Dict[str, Any]:
+def iter_courses_from_cache() -> dict[str, Any]:
     cache = {}
     if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+        with open(CACHE_FILE, encoding="utf-8") as f:
             for line in f:
                 try:
                     rec = json.loads(line)
@@ -106,7 +111,7 @@ def save_cache_entry(pair_key: str, payload: Any):
         )
 
 
-def extract_lines_from_course_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+def extract_lines_from_course_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """
     From /search/course/extreme payload, extract bus segments with LINE=xxx and Stop[].
     Return list of { line_id, corp, name, stop_codes }
@@ -191,7 +196,7 @@ def main():
 
     sess = requests.Session()
     seen_pairs = 0
-    all_lines: Dict[str, Dict[str, Any]] = {}  # line_id -> aggregated record
+    all_lines: dict[str, dict[str, Any]] = {}  # line_id -> aggregated record
     edges = set()  # (line_id, stop_code)
 
     for a, b in tqdm(pairs, desc="fetch extreme"):
@@ -272,7 +277,8 @@ def main():
     print(f"🧾 缓存: {CACHE_FILE}（累计 pair 请求 {seen_pairs}）")
     if len(all_lines) == 0:
         print(
-            "⚠️ 如果仍为 0：可能该区域 pair 过稀或 answerCount 太小，调大 K_NEI/PAIRS_LIMIT/answerCount 再试。"
+            "⚠️ 仍为 0：可能该区域 pair 过稀或 answerCount 太小，"
+            "調整 K_NEI / PAIRS_LIMIT / answerCount 后重试。"
         )
 
 

@@ -1,6 +1,8 @@
 # apps/api/tools/find_missing_station_coords.py
 from __future__ import annotations
+
 import os
+
 import pandas as pd
 
 BASE = os.path.dirname(__file__)
@@ -135,9 +137,11 @@ else:
 
     print("\n🪪 列名自检：")
     print(
-        f"  stations.csv -> code={st_code_col}, name={st_name_col}, lat={st_lat_col}, lon={st_lon_col}"
+        "  stations.csv -> "
+        f"code={st_code_col}, name={st_name_col}, lat={st_lat_col}, lon={st_lon_col}"
     )
     print(
-        f"  edges.csv    -> line={edge_line_col}, station_code={edge_code_col}, order={edge_order_col}"
+        "  edges.csv    -> "
+        f"line={edge_line_col}, station_code={edge_code_col}, order={edge_order_col}"
     )
     print(f"  meta.csv     -> line={meta_line_col}, line_name={meta_name_col}")

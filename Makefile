@@ -8,7 +8,7 @@ API_DIR := apps/api
 COMPOSE_DEV := infra/compose/docker-compose.dev.yml
 COMPOSE_PROD := infra/compose/docker-compose.prod.yml
 
-PNPM_VER := 9.0.0
+PNPM_VER := 8.15.4
 POETRY_VER := 2.2.1
 
 # ---------- ヘルプ ----------
@@ -64,7 +64,7 @@ lint-web:
 	cd $(WEB_DIR) && pnpm lint
 
 lint-api:
-	@echo "No API linter configured yet."
+	cd $(API_DIR) && poetry run ruff check .
 
 # ---------- Docker: 開発 ----------
 .PHONY: up-dev down-dev logs sh-web sh-api

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tag "freepass-eligible" lines with built-in paths (no CLI required).
 Inputs (defaults, can be overridden by CLI):
@@ -13,8 +12,12 @@ Outputs:
   - apps/api/data/freepass_summary.csv
 """
 
-import os, sys, csv, json, math, argparse
-from typing import Dict, Tuple, List, Any, Iterable
+import argparse
+import csv
+import json
+import os
+import sys
+from typing import Any
 
 # ======= 内置默认路径（可用 CLI 覆盖） =======
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +47,7 @@ NAME_DENY_KEYWORDS = [
 
 
 # ======= Geo 工具：Point-In-Polygon（支持 MultiPolygon） =======
-def _point_in_ring(lat: float, lon: float, ring: List[Tuple[float, float]]) -> bool:
+def _point_in_ring(lat: float, lon: float, ring: list[tuple[float, float]]) -> bool:
     """Ray casting in lon-lat order (x=lon, y=lat). ring: [(lon,lat), ...]"""
     x, y = lon, lat
     inside = False
@@ -64,10 +67,11 @@ def _point_in_ring(lat: float, lon: float, ring: List[Tuple[float, float]]) -> b
 
 
 def _point_in_poly(
-    lat: float, lon: float, coords: List[List[Tuple[float, float]]]
+    lat: float, lon: float, coords: list[list[tuple[float, float]]]
 ) -> bool:
     """
-    Polygon with holes: coords[0] = outer, coords[1:] = holes. Return True if in outer and not in holes.
+    Polygon with holes: coords[0] is outer, coords[1:] are holes.
+    Return True if inside the outer polygon and outside every hole.
     """
     if not coords:
         return False
@@ -81,7 +85,7 @@ def _point_in_poly(
 
 
 def _any_polygon_contains(
-    lat: float, lon: float, multipoly: List[List[List[Tuple[float, float]]]]
+    lat: float, lon: float, multipoly: list[list[list[tuple[float, float]]]]
 ) -> bool:
     """multipoly: list of polygons; each polygon is list of rings; ring is list of (lon,lat)."""
     for poly in multipoly:
@@ -90,7 +94,7 @@ def _any_polygon_contains(
     return False
 
 
-def load_city_multipolygon(geojson_path: str) -> List[List[List[Tuple[float, float]]]]:
+def load_city_multipolygon(geojson_path: str) -> list[list[list[tuple[float, float]]]]:
     """
     Return MultiPolygon normalized to: List[Polygon], Polygon -> List[Ring], Ring -> List[(lon,lat)]
     Accepts Feature/FeatureCollection/Geometry. Supports Polygon and MultiPolygon.
@@ -98,10 +102,10 @@ def load_city_multipolygon(geojson_path: str) -> List[List[List[Tuple[float, flo
     if not os.path.exists(geojson_path):
         print(f"❌ 缺少市界 GeoJSON: {geojson_path}", file=sys.stderr)
         sys.exit(1)
-    with open(geojson_path, "r", encoding="utf-8") as f:
+    with open(geojson_path, encoding="utf-8") as f:
         gj = json.load(f)
 
-    def normalize_geom(geom: Dict[str, Any]) -> List[List[List[Tuple[float, float]]]]:
+    def normalize_geom(geom: dict[str, Any]) -> list[list[list[tuple[float, float]]]]:
         gtype = geom.get("type")
         coords = geom.get("coordinates")
         if gtype == "Polygon":
@@ -131,11 +135,11 @@ def load_city_multipolygon(geojson_path: str) -> List[List[List[Tuple[float, flo
 
 
 # ======= 数据加载 =======
-def load_stations(stations_csv: str) -> Dict[str, Tuple[float, float]]:
+def load_stations(stations_csv: str) -> dict[str, tuple[float, float]]:
     if not os.path.exists(stations_csv):
         print(f"❌ 未找到站点文件: {stations_csv}", file=sys.stderr)
         sys.exit(1)
-    code2ll: Dict[str, Tuple[float, float]] = {}
+    code2ll: dict[str, tuple[float, float]] = {}
     with open(stations_csv, newline="", encoding="utf-8") as f:
         r = csv.DictReader(f)
         for row in r:
@@ -151,7 +155,7 @@ def load_stations(stations_csv: str) -> Dict[str, Tuple[float, float]]:
             try:
                 latf = float(lat) if lat not in (None, "") else None
                 lonf = float(lon) if lon not in (None, "") else None
-            except:
+            except (TypeError, ValueError):
                 latf = lonf = None
             if latf is None or lonf is None:
                 continue
@@ -159,12 +163,12 @@ def load_stations(stations_csv: str) -> Dict[str, Tuple[float, float]]:
     return code2ll
 
 
-def load_edges(edges_csv: str) -> Dict[str, set]:
+def load_edges(edges_csv: str) -> dict[str, set]:
     """Return: line_id -> {station_code,...}"""
     if not os.path.exists(edges_csv):
         print(f"❌ 未找到线路-站点关系文件: {edges_csv}", file=sys.stderr)
         sys.exit(1)
-    line2stops: Dict[str, set] = {}
+    line2stops: dict[str, set] = {}
     with open(edges_csv, newline="", encoding="utf-8") as f:
         r = csv.DictReader(f)
         for row in r:
@@ -180,9 +184,9 @@ def load_edges(edges_csv: str) -> Dict[str, set]:
     return line2stops
 
 
-def load_line_meta(lines_meta_csv: str) -> Dict[str, Dict[str, str]]:
+def load_line_meta(lines_meta_csv: str) -> dict[str, dict[str, str]]:
     """Return: line_id -> {'corporation':..., 'name':...}"""
-    meta: Dict[str, Dict[str, str]] = {}
+    meta: dict[str, dict[str, str]] = {}
     if not os.path.exists(lines_meta_csv):
         # 可缺省
         return meta
@@ -248,8 +252,8 @@ def main():
     multipoly = load_city_multipolygon(city_geojson)
 
     # 统计
-    summary_rows: List[Dict[str, Any]] = []
-    yml_lines: List[str] = ["# generated by tag_freepass.py", "freepass_lines:"]
+    summary_rows: list[dict[str, Any]] = []
+    yml_lines: list[str] = ["# generated by tag_freepass.py", "freepass_lines:"]
 
     for lid, stops in sorted(line2stops.items()):
         corp = lines_meta.get(lid, {}).get("corporation", "")

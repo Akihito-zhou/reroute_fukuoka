@@ -9,7 +9,7 @@ COPY apps/web/package.json apps/web/package.json
 # COPY packages/ui/package.json packages/ui/package.json
 
 # pnpm を準備し、lock に基づいて依存を事前フェッチする
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate && pnpm fetch
+RUN corepack enable && corepack prepare pnpm@8.15.4 --activate && pnpm fetch
 
 # ソースコードをコピー
 COPY apps ./apps

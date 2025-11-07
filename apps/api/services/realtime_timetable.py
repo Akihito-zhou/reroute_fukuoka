@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
-from typing import Dict, Iterable, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 try:  # pragma: no cover - support flat module imports
     from ..clients.ekispert_bus import EkispertBusClient, TripQuery
@@ -25,10 +26,10 @@ class RealtimeSegmentPatch:
     trip_id: str
     from_code: str
     to_code: str
-    depart: Optional[int]
-    arrive: Optional[int]
+    depart: int | None
+    arrive: int | None
     status: str | None = None
-    delay_minutes: Optional[int] = None
+    delay_minutes: int | None = None
 
 
 class RealtimeTimetableManager:
@@ -36,7 +37,7 @@ class RealtimeTimetableManager:
 
     def __init__(
         self,
-        client: Optional[EkispertBusClient],
+        client: EkispertBusClient | None,
         *,
         enable_realtime: bool = True,
         cache_seconds: int = 120,
@@ -45,11 +46,11 @@ class RealtimeTimetableManager:
         self._client = client if self._realtime_enabled else None
         self._cache_seconds = cache_seconds
         self._lock = threading.Lock()
-        self._static_edges: list["TripEdge"] = []
-        self._patches: Dict[Tuple[str, str, str], RealtimeSegmentPatch] = {}
+        self._static_edges: list[TripEdge] = []
+        self._patches: dict[tuple[str, str, str], RealtimeSegmentPatch] = {}
         self._last_refresh: float = 0.0
 
-    def load_static_edges(self, edges: Sequence["TripEdge"]) -> None:
+    def load_static_edges(self, edges: Sequence[TripEdge]) -> None:
         with self._lock:
             self._static_edges = list(edges)
             self._patches.clear()
@@ -60,9 +61,9 @@ class RealtimeTimetableManager:
         start_minutes: int,
         end_minutes: int,
         *,
-        line_filter: Optional[Iterable[str]] = None,
+        line_filter: Iterable[str] | None = None,
         force_refresh: bool = False,
-    ) -> list["TripEdge"]:
+    ) -> list[TripEdge]:
         """Return edges clipped to the requested time window, patched with realtime data."""
         if force_refresh:
             self.refresh_realtime(line_filter=line_filter)
@@ -72,7 +73,7 @@ class RealtimeTimetableManager:
         selected_lines = set(line_filter) if line_filter else None
 
         with self._lock:
-            result: list["TripEdge"] = []
+            result: list[TripEdge] = []
             for edge in self._static_edges:
                 if selected_lines and edge.line_id not in selected_lines:
                     continue
@@ -90,7 +91,7 @@ class RealtimeTimetableManager:
     def refresh_realtime(
         self,
         *,
-        line_filter: Optional[Iterable[str]] = None,
+        line_filter: Iterable[str] | None = None,
         soft: bool = False,
     ) -> None:
         """Fetch realtime updates if cache expired. `soft=True` skips fetch when cache valid."""
@@ -117,7 +118,7 @@ class RealtimeTimetableManager:
         return self._realtime_enabled
 
     def _build_trip_queries(
-        self, line_filter: Optional[Iterable[str]]
+        self, line_filter: Iterable[str] | None
     ) -> list[TripQuery]:
         if line_filter:
             lines = set(line_filter)
@@ -129,7 +130,7 @@ class RealtimeTimetableManager:
             else:
                 relevant = self._static_edges
             queries: list[TripQuery] = []
-            seen: set[Tuple[str, str]] = set()
+            seen: set[tuple[str, str]] = set()
             for edge in relevant:
                 key = (edge.line_id, edge.trip_id)
                 if key in seen:
@@ -146,20 +147,31 @@ class RealtimeTimetableManager:
 
     def _parse_trip_payload(
         self, payload: Sequence[dict]
-    ) -> Dict[Tuple[str, str, str], RealtimeSegmentPatch]:
-        patches: Dict[Tuple[str, str, str], RealtimeSegmentPatch] = {}
+    ) -> dict[tuple[str, str, str], RealtimeSegmentPatch]:
+        patches: dict[tuple[str, str, str], RealtimeSegmentPatch] = {}
         for entry in payload or []:
             trip = entry.get("Trip") or entry
-            trip_id = str(trip.get("tripId") or trip.get("TripID") or trip.get("id") or "")
-            line_id = str(trip.get("operationLineCode") or trip.get("line_id") or "")
+            trip_id = str(
+                trip.get("tripId") or trip.get("TripID") or trip.get("id") or ""
+            )
             stops = trip.get("Stop") or entry.get("Stop")
             if isinstance(stops, dict):
                 stops = [stops]
             if not trip_id or not stops:
                 continue
             for segment in stops:
-                frm = str(segment.get("fromCode") or segment.get("from") or segment.get("from_stop") or "")
-                to = str(segment.get("toCode") or segment.get("to") or segment.get("to_stop") or "")
+                frm = str(
+                    segment.get("fromCode")
+                    or segment.get("from")
+                    or segment.get("from_stop")
+                    or ""
+                )
+                to = str(
+                    segment.get("toCode")
+                    or segment.get("to")
+                    or segment.get("to_stop")
+                    or ""
+                )
                 if not frm or not to:
                     continue
                 depart = self._parse_minutes(segment.get("departure"))
@@ -180,7 +192,7 @@ class RealtimeTimetableManager:
         return patches
 
     @staticmethod
-    def _parse_minutes(value: Optional[str]) -> Optional[int]:
+    def _parse_minutes(value: str | None) -> int | None:
         if value is None:
             return None
         text = str(value).strip()
@@ -197,7 +209,7 @@ class RealtimeTimetableManager:
             return None
 
     @staticmethod
-    def _parse_optional_int(value: Optional[str]) -> Optional[int]:
+    def _parse_optional_int(value: str | None) -> int | None:
         if value is None:
             return None
         try:

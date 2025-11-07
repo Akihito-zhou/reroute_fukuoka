@@ -260,6 +260,7 @@ def main():
         name = lines_meta.get(lid, {}).get("name", "")
 
         inside, outside, unknown = 0, 0, 0
+        outside_stop_codes: list[str] = []
         for sc in stops:
             ll = code2ll.get(sc)
             if not ll:
@@ -270,16 +271,17 @@ def main():
                 inside += 1
             else:
                 outside += 1
+                outside_stop_codes.append(sc)
 
-        # 规则：公司白名单 + 全部站点在市界内 + 名称不含黑名单关键词
-        eligible = corp_allowed(corp) and (outside == 0) and (not name_denied(name))
+        # 规则：公司白名单 + 名称不含黑名单关键词（即便有市外站也保留，后续过滤时再剔除站点）
+        eligible = corp_allowed(corp) and (not name_denied(name))
         reason = []
         if not corp_allowed(corp):
             reason.append("corp_not_allowed")
-        if outside > 0:
-            reason.append("has_outside_stops")
         if name_denied(name):
             reason.append("name_blacklisted")
+        if outside > 0:
+            reason.append("has_outside_stops")
         reason_str = ",".join(reason) if reason else "ok"
 
         summary_rows.append(
@@ -291,6 +293,7 @@ def main():
                 "stops_inside": inside,
                 "stops_outside": outside,
                 "stops_unknown": unknown,
+                "outside_stop_codes": ",".join(outside_stop_codes),
                 "eligible": "yes" if eligible else "no",
                 "reason": reason_str,
             }
@@ -305,6 +308,12 @@ def main():
         yml_lines.append(f"    stops_unknown: {unknown}")
         yml_lines.append(f"    eligible: {str(eligible).lower()}")
         yml_lines.append(f'    reason: "{reason_str}"')
+        if outside_stop_codes:
+            yml_lines.append("    outside_stops:")
+            for code in outside_stop_codes:
+                yml_lines.append(f'      - "{code}"')
+        else:
+            yml_lines.append("    outside_stops: []")
 
     # 写出
     os.makedirs(os.path.dirname(out_yml), exist_ok=True)
@@ -322,6 +331,7 @@ def main():
                 "stops_inside",
                 "stops_outside",
                 "stops_unknown",
+                "outside_stop_codes",
                 "eligible",
                 "reason",
             ],

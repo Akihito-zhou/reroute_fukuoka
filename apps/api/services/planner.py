@@ -57,8 +57,6 @@ REST_SUGGESTIONS = [
 
 
 logger = logging.getLogger(__name__)
-
-
 class PlannerError(RuntimeError):
     """Raised when the planner cannot compute challenges."""
 
@@ -155,10 +153,37 @@ class Label:
     quadrant_mask: int
     legs: tuple[JourneyLeg, ...]
     score: float
+    stop_counts: tuple[tuple[str, int], ...] = field(
+        default_factory=tuple, compare=False
+    )
+    line_counts: tuple[tuple[str, int], ...] = field(
+        default_factory=tuple, compare=False
+    )
+    transfers: int = field(default=0, compare=False)
+    min_transfer_gap: int = field(default=10**9, compare=False)
 
 
 @dataclass(frozen=True)
 class ChallengeConfig:
+    """
+    Tunable knobs per challenge. Feel free to adjust these when you need to
+    rebalance feasibility vs. exploration:
+
+    - min_transfer_minutes / transfer_penalty_minutes:
+        Enforce minimum wait buffer and penalize excessive transfers.
+    - max_stop_visits / hakata_max_visits:
+        Hard cap on how many times a stop may appear in one itinerary.
+        Use hakata_max_visits to allow slightly more visits for Hakata only.
+    - max_line_visits:
+        Limits how often the same line can be boarded (helps prevent looping).
+    - stop_repeat_penalty_weight:
+        Soft penalty applied to every repeated stop (even if under the hard cap).
+        Raise this value when you want RAPTOR to strongly avoid revisits without
+        completely cutting search feasibility.
+    - forbid_non_hakata_duplicates / allow_hakata_revisit:
+        Toggle whether non-Hakata stops may repeat at all and whether Hakata is
+        allowed special treatment.
+    """
     challenge_id: str
     title: str
     tagline: str
@@ -169,6 +194,14 @@ class ChallengeConfig:
     scoring_fn: Callable[[Label, dict[str, float]], float]
     dominance_fn: Callable[[Label, dict[str, float], Label, dict[str, float]], bool]
     accept_fn: Callable[[Label, dict[str, float]], bool]
+    min_transfer_minutes: int = TRANSFER_BUFFER_MINUTES
+    transfer_penalty_minutes: int = 0
+    max_stop_visits: int | None = None
+    max_line_visits: int | None = None
+    forbid_non_hakata_duplicates: bool = False
+    allow_hakata_revisit: bool = True
+    hakata_max_visits: int | None = None
+    stop_repeat_penalty_weight: int = 0
 
 
 @dataclass
@@ -261,9 +294,11 @@ class SearchState:
     current_time: int = field(compare=False)
     stop_code: str = field(compare=False)
     path: tuple[TripEdge, ...] = field(compare=False, default=())
-    visited: frozenset[str] = field(compare=False, default_factory=frozenset)
     unique_count: int = field(compare=False, default=0)
     quadrant_mask: int = field(compare=False, default=0)
+    stop_visit_counts: dict[str, int] = field(compare=False, default_factory=dict)
+    line_visit_counts: dict[str, int] = field(compare=False, default_factory=dict)
+    transfers: int = field(compare=False, default=0)
 
 
 def haversine_km(a: Station, b: Station) -> float:
@@ -765,8 +800,8 @@ class PlannerService:
 
             if len(stops_seq) < 2:
                 continue
-            if len(stops_seq) > 15:
-                stops_seq = stops_seq[:15]
+            # if len(stops_seq) > 15:
+            #     stops_seq = stops_seq[:15]
             for edge_list in trips.values():
                 edge_list.sort(key=lambda e: e.depart)
             stop_to_index = {code: idx for idx, code in enumerate(stops_seq)}
@@ -990,10 +1025,10 @@ class PlannerService:
         segment_index: int,
         depart: int,
         arrive: int,
+        config: ChallengeConfig,
     ) -> Label | None:
         from_code = route.stops[segment_index]
         to_code = route.stops[segment_index + 1]
-        # Avoid immediate往復
         if (
             base.legs
             and base.legs[-1].from_code == to_code
@@ -1009,6 +1044,24 @@ class PlannerService:
         ride_minutes = base.ride_minutes + max(0, arrive - depart)
         distance_km = base.distance_km + distance_inc
         legs = list(base.legs)
+        prev_leg = legs[-1] if legs else None
+        boarding_new_trip = (
+            prev_leg is None
+            or prev_leg.trip_id != trip.trip_id
+            or prev_leg.line_id != route.line_id
+        )
+        gap = depart - prev_leg.arrive if prev_leg else None
+        if boarding_new_trip and prev_leg and gap is not None:
+            if gap < config.min_transfer_minutes:
+                return None
+
+        new_transfers = base.transfers
+        new_min_gap = base.min_transfer_gap
+        if boarding_new_trip and prev_leg:
+            new_transfers += 1
+            gap_value = gap if gap is not None else 10**9
+            new_min_gap = min(base.min_transfer_gap, gap_value)
+
         if (
             legs
             and legs[-1].trip_id == trip.trip_id
@@ -1040,6 +1093,31 @@ class PlannerService:
                     stop_hops=1,
                 )
             )
+
+        stop_counts = dict(base.stop_counts)
+        if not legs:
+            stop_counts[from_code] = stop_counts.get(from_code, 0) + 1
+        current_visits = stop_counts.get(to_code, 0)
+        if to_code in self._hakata_stops:
+            limit = config.hakata_max_visits or config.max_stop_visits
+        else:
+            limit = config.max_stop_visits
+        if limit is not None and current_visits >= limit:
+            return None
+        if (
+            config.forbid_non_hakata_duplicates
+            and to_code not in self._hakata_stops
+            and current_visits > 0
+        ):
+            return None
+        stop_counts[to_code] = current_visits + 1
+
+        line_counts = dict(base.line_counts)
+        if boarding_new_trip:
+            line_counts[route.line_id] = line_counts.get(route.line_id, 0) + 1
+            if config.max_line_visits and line_counts[route.line_id] > config.max_line_visits:
+                return None
+
         return Label(
             arrival=arrive,
             ride_minutes=ride_minutes,
@@ -1048,8 +1126,11 @@ class PlannerService:
             quadrant_mask=quadrant_mask,
             legs=tuple(legs),
             score=0.0,
+            stop_counts=tuple(sorted(stop_counts.items())),
+            line_counts=tuple(sorted(line_counts.items())),
+            transfers=new_transfers,
+            min_transfer_gap=new_min_gap,
         )
-
     def _insert_label(
         self,
         bucket: list[Label],
@@ -1135,6 +1216,10 @@ class PlannerService:
                 quadrant_mask=mask,
                 legs=(),
                 score=0.0,
+                stop_counts=((stop_code, 1),),
+                line_counts=tuple(),
+                transfers=0,
+                min_transfer_gap=10**9,
             )
             metrics = get_metrics(base_label)
             scored = replace(base_label, score=config.scoring_fn(base_label, metrics))
@@ -1164,7 +1249,7 @@ class PlannerService:
                         if not labels_at_stop:
                             continue
                         for label in labels_at_stop:
-                            earliest_depart = label.arrival + TRANSFER_BUFFER_MINUTES
+                            earliest_depart = label.arrival + config.min_transfer_minutes
                             onboard_label: Label | None = None
                             boarded = False
                             for seg_idx in range(from_idx, len(route.stops) - 1):
@@ -1174,7 +1259,13 @@ class PlannerService:
                                     continue
                                 base_label = onboard_label if boarded else label
                                 new_label = self._extend_label(
-                                    base_label, route, trip, seg_idx, depart, arrive
+                                    base_label,
+                                    route,
+                                    trip,
+                                    seg_idx,
+                                    depart,
+                                    arrive,
+                                    config,
                                 )
                                 if new_label is None:
                                     if boarded:
@@ -1296,7 +1387,18 @@ class PlannerService:
     # ---------- challenge planners ----------
 
     def _config_longest_duration(self) -> ChallengeConfig:
-        def scoring(label: Label, metrics: dict[str, float]) -> float:
+        transfer_buffer = 5
+        transfer_penalty_weight = 800
+
+        def scoring(label: Label, metrics: dict[str, float], config: ChallengeConfig) -> float:
+            stop_counts = dict(label.stop_counts)
+            for stop, count in stop_counts.items():
+                limit = config.max_stop_visits
+                if stop in self._hakata_stops:
+                    limit = config.hakata_max_visits or limit
+                if limit and count > limit:
+                    return -1.0
+
             return (
                 label.ride_minutes * 10000
                 + metrics["unique_lines"] * 600
@@ -1306,6 +1408,8 @@ class PlannerService:
                 - metrics["center_ratio"] * 4000
                 - metrics["short_leg_ratio"] * 3000
                 - metrics["repeat_penalty"] * 500
+                - metrics["stop_repeat_total"] * 900
+                - label.transfers * transfer_penalty_weight
             )
 
         def dominance(
@@ -1325,7 +1429,24 @@ class PlannerService:
         def accept(_: Label, __: dict[str, float]) -> bool:
             return True
 
-        return ChallengeConfig(
+        def dominance(
+            a: Label,
+            metrics_a: dict[str, float],
+            b: Label,
+            metrics_b: dict[str, float],
+        ) -> bool:
+            if (
+                a.ride_minutes >= b.ride_minutes
+                and metrics_a["unique_lines"] >= metrics_b["unique_lines"]
+                and a.arrival <= b.arrival
+            ):
+                return a.score >= b.score
+            return False
+
+        def accept(_: Label, __: dict[str, float]) -> bool:
+            return True
+
+        challenge_config = ChallengeConfig(
             challenge_id="longest-duration",
             title="24時間ロングライド",
             tagline="博多から出発し24時間ひたすら乗り継ぎ続ける耐久チャレンジ。",
@@ -1333,12 +1454,22 @@ class PlannerService:
             badge="最長乗車",
             require_quadrants=False,
             max_rounds=min(5, MAX_TRANSFERS),
-            scoring_fn=scoring,
+            scoring_fn=lambda l, m: scoring(l, m, challenge_config),
             dominance_fn=dominance,
             accept_fn=accept,
+            min_transfer_minutes=transfer_buffer,
+            transfer_penalty_minutes=transfer_buffer,
+            max_stop_visits=3,  # 除博多外至多出现 3 次
+            max_line_visits=2,
+            hakata_max_visits=3,  # 博多站允许出现 3 次（出发/返回/中转）
+            stop_repeat_penalty_weight=900,  # 重复停靠越多得分越低
         )
+        return challenge_config
 
     def _config_most_stops(self) -> ChallengeConfig:
+        transfer_buffer = 6
+        transfer_penalty_weight = 1000
+
         def scoring(label: Label, metrics: dict[str, float]) -> float:
             return (
                 metrics["unique_stops"] * 12000
@@ -1348,6 +1479,8 @@ class PlannerService:
                 + metrics["boundary_ratio"] * 2500
                 - metrics["center_ratio"] * 2500
                 - metrics["repeat_penalty"] * 600
+                - metrics["stop_repeat_total"] * 1600
+                - label.transfers * transfer_penalty_weight
             )
 
         def dominance(
@@ -1377,15 +1510,27 @@ class PlannerService:
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
+            min_transfer_minutes=transfer_buffer,
+            transfer_penalty_minutes=transfer_buffer,
+            max_stop_visits=None,
+            max_line_visits=None,
+            forbid_non_hakata_duplicates=False,
+            allow_hakata_revisit=True,
+            hakata_max_visits=None,
+            stop_repeat_penalty_weight=1600,  # 最多停一次，超过直接扣重分
         )
 
     def _config_city_loop(self) -> ChallengeConfig:
+        transfer_buffer = 5
+        transfer_penalty_weight = 900
+
         def scoring(label: Label, metrics: dict[str, float]) -> float:
             if metrics["quadrants"] < 4:
                 return (
                     metrics["quadrants"] * 1200
                     + metrics["avg_radius"] * 80
                     + metrics["boundary_ratio"] * 1800
+                    - metrics["stop_repeat_total"] * 1200
                 )
             return (
                 metrics["hull_area"] * 120
@@ -1397,6 +1542,8 @@ class PlannerService:
                 + metrics["boundary_progress"] * 6000
                 - metrics["center_ratio"] * 4500
                 - metrics["repeat_penalty"] * 500
+                - metrics["stop_repeat_total"] * 1500
+                - label.transfers * transfer_penalty_weight
             )
 
         def dominance(
@@ -1434,9 +1581,18 @@ class PlannerService:
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
+            min_transfer_minutes=transfer_buffer,
+            transfer_penalty_minutes=transfer_buffer,
+            max_stop_visits=None,
+            max_line_visits=None,
+            stop_repeat_penalty_weight=1400,
+            hakata_max_visits=None,
         )
 
     def _config_longest_distance(self) -> ChallengeConfig:
+        transfer_buffer = 5
+        transfer_penalty_weight = 900
+
         def scoring(label: Label, metrics: dict[str, float]) -> float:
             return (
                 label.distance_km * 12500
@@ -1446,6 +1602,8 @@ class PlannerService:
                 + metrics["boundary_ratio"] * 2500
                 - metrics["repeat_penalty"] * 700
                 - metrics["center_ratio"] * 3200
+                - metrics["stop_repeat_total"] * 900
+                - label.transfers * transfer_penalty_weight
             )
 
         def dominance(
@@ -1477,6 +1635,12 @@ class PlannerService:
             scoring_fn=scoring,
             dominance_fn=dominance,
             accept_fn=accept,
+            min_transfer_minutes=transfer_buffer,
+            transfer_penalty_minutes=transfer_buffer,
+            max_stop_visits=4,
+            max_line_visits=None,
+            hakata_max_visits=None,
+            stop_repeat_penalty_weight=900,
         )
 
     def _plan_longest_duration(self) -> ChallengePlan:
@@ -1622,10 +1786,22 @@ class PlannerService:
         span = 360.0 - max_gap
         return span, total_turn
 
+    def _count_stop_visits_from_legs(
+        self, legs: Sequence[JourneyLeg]
+    ) -> Counter[str]:
+        counts: Counter[str] = Counter()
+        for leg in legs:
+            counts[leg.from_code] += 1
+            counts[leg.to_code] += 1
+        return counts
+
     def _label_metrics(self, label: Label) -> dict[str, float]:
         unique_lines = len({leg.line_id for leg in label.legs})
         unique_stops = len(label.visited)
         quadrants = bin(label.quadrant_mask).count("1")
+        stop_counts_map = dict(label.stop_counts)
+        stop_repeat_total = sum(max(0, cnt - 1) for cnt in stop_counts_map.values())
+        stop_repeat_max = max(stop_counts_map.values()) if stop_counts_map else 0
 
         visited_coords: list[tuple[float, float]] = []
         distances: list[float] = []
@@ -1699,6 +1875,8 @@ class PlannerService:
             "boundary_hits": float(boundary_hits),
             "boundary_ratio": boundary_ratio,
             "boundary_progress": boundary_progress,
+            "stop_repeat_total": float(stop_repeat_total),
+            "stop_repeat_max": float(stop_repeat_max),
         }
 
     def _compute_challenges(self) -> dict[str, ChallengePlan]:
@@ -1721,6 +1899,12 @@ class PlannerService:
             require_quadrants=False,
             max_queue=2500,
             max_expansions=150000,
+            max_stop_visits=None,
+            max_line_visits=None,
+            min_transfer_minutes=5,
+            transfer_penalty_minutes=5,
+            hakata_max_visits=3,
+            stop_repeat_penalty_weight=900,
         )
         if result is None:
             raise PlannerError("最長乗車ルートの探索に失敗しました。")
@@ -1744,6 +1928,12 @@ class PlannerService:
             max_queue=3200,
             max_expansions=180000,
             max_branch=10,
+            max_stop_visits=None,
+            max_line_visits=None,
+            min_transfer_minutes=6,
+            transfer_penalty_minutes=6,
+            hakata_max_visits=2,
+            stop_repeat_penalty_weight=1600,
         )
         if result is None:
             raise PlannerError("最多停留所ルートの探索に失敗しました。")
@@ -1767,6 +1957,12 @@ class PlannerService:
             max_queue=3500,
             max_expansions=220000,
             max_branch=12,
+            max_stop_visits=None,
+            max_line_visits=None,
+            min_transfer_minutes=5,
+            transfer_penalty_minutes=5,
+            hakata_max_visits=2,
+            stop_repeat_penalty_weight=1400,
         )
         if result is None:
             # second attempt with relaxed branching penalty
@@ -1777,6 +1973,12 @@ class PlannerService:
                 max_queue=4500,
                 max_expansions=260000,
                 max_branch=16,
+                max_stop_visits=None,
+                max_line_visits=None,
+                min_transfer_minutes=5,
+                transfer_penalty_minutes=5,
+                hakata_max_visits=2,
+                stop_repeat_penalty_weight=1400,
             )
         if result is None:
             fallback = self._run_search(
@@ -1786,6 +1988,12 @@ class PlannerService:
                 max_queue=5200,
                 max_expansions=320000,
                 max_branch=18,
+                max_stop_visits=None,
+                max_line_visits=None,
+                min_transfer_minutes=5,
+                transfer_penalty_minutes=5,
+                hakata_max_visits=2,
+                stop_repeat_penalty_weight=1400,
             )
             if fallback:
                 result = fallback
@@ -1814,6 +2022,12 @@ class PlannerService:
         max_queue: int | None = None,
         max_expansions: int | None = None,
         max_branch: int | None = None,
+        max_stop_visits: int | None = None,
+        max_line_visits: int | None = None,
+        min_transfer_minutes: int = TRANSFER_BUFFER_MINUTES,
+        transfer_penalty_minutes: int = 0,
+        stop_repeat_penalty_weight: int = 0,
+        hakata_max_visits: int | None = None,
     ) -> SearchState | None:
         if not self._stop_schedules:
             raise PlannerError("時刻表がロードされていません。")
@@ -1823,6 +2037,8 @@ class PlannerService:
         queue_limit = max_queue or MAX_QUEUE_SIZE
         expansion_limit = max_expansions or MAX_EXPANSIONS
         branch_limit = max_branch or MAX_BRANCH_PER_EXPANSION
+        stop_limit = max_stop_visits if max_stop_visits and max_stop_visits > 0 else None
+        line_limit = max_line_visits if max_line_visits and max_line_visits > 0 else None
 
         def push(state: SearchState, priority: float) -> None:
             nonlocal counter
@@ -1836,17 +2052,19 @@ class PlannerService:
         results: list[SearchState] = []
 
         for stop_code in self._hakata_stops:
-            visited = frozenset({stop_code}) if require_unique else frozenset()
             mask = self._quadrant_map.get(stop_code, 0)
+            initial_unique = 1 if require_unique else 0
             state = SearchState(
                 priority=0.0,
                 ride_minutes=0,
                 current_time=START_TIME_MINUTES,
                 stop_code=stop_code,
                 path=(),
-                visited=visited,
-                unique_count=len(visited),
+                unique_count=initial_unique,
                 quadrant_mask=mask,
+                stop_visit_counts={stop_code: 1},
+                line_visit_counts={},
+                transfers=0,
             )
             push(state, 0.0)
 
@@ -1868,7 +2086,7 @@ class PlannerService:
                         break
 
             next_edges = self._next_edges(
-                state.stop_code, state.current_time + TRANSFER_BUFFER_MINUTES
+                state.stop_code, state.current_time + min_transfer_minutes
             )
             if not next_edges:
                 continue
@@ -1880,16 +2098,45 @@ class PlannerService:
                 if branch_count > branch_limit:
                     break
 
+                if require_unique and edge.to_code in state.stop_visit_counts:
+                    if not (edge.to_code in self._hakata_stops and state.path):
+                        continue
+
+                if stop_limit:
+                    limit = stop_limit
+                    if edge.to_code in self._hakata_stops and hakata_max_visits:
+                        limit = hakata_max_visits
+                    if state.stop_visit_counts.get(edge.to_code, 0) >= limit:
+                        continue
+
                 new_path = state.path + (edge,)
                 new_time = edge.arrive
                 new_ride = state.ride_minutes + edge.ride_minutes
                 new_mask = state.quadrant_mask | self._quadrant_map.get(edge.to_code, 0)
 
-                if require_unique:
-                    new_visited = frozenset(set(state.visited) | {edge.to_code})
+                current_stop_visits = state.stop_visit_counts.get(edge.to_code, 0)
+                new_stop_counts = dict(state.stop_visit_counts)
+                new_stop_counts[edge.to_code] = current_stop_visits + 1
+
+                prev_edge = state.path[-1] if state.path else None
+                boarding_new_trip = prev_edge is None or edge.trip_id != prev_edge.trip_id
+                is_transfer = boarding_new_trip and prev_edge is not None
+
+                if line_limit and boarding_new_trip:
+                    if state.line_visit_counts.get(edge.line_id, 0) >= line_limit:
+                        continue
+
+                if boarding_new_trip:
+                    new_line_counts = dict(state.line_visit_counts)
+                    new_line_counts[edge.line_id] = (
+                        new_line_counts.get(edge.line_id, 0) + 1
+                    )
                 else:
-                    new_visited = state.visited
-                new_unique = len(new_visited)
+                    new_line_counts = state.line_visit_counts
+
+                new_unique = (
+                    state.unique_count + 1 if require_unique else state.unique_count
+                )
 
                 if (
                     require_quadrants
@@ -1905,11 +2152,18 @@ class PlannerService:
                     current_time=new_time,
                     stop_code=edge.to_code,
                     path=new_path,
-                    visited=new_visited,
                     unique_count=new_unique,
                     quadrant_mask=new_mask,
+                    stop_visit_counts=new_stop_counts,
+                    line_visit_counts=new_line_counts,
+                    transfers=state.transfers + (1 if is_transfer else 0),
                 )
-                score = self._score_state(next_state, score_key)
+                score = self._score_state(
+                    next_state,
+                    score_key,
+                    transfer_penalty_minutes,
+                    stop_repeat_penalty_weight,
+                )
                 key = (edge.to_code, new_time // 30)
                 if score <= best_key_score.get(key, -1):
                     continue
@@ -1918,7 +2172,15 @@ class PlannerService:
 
         if not results:
             return None
-        scores = [(self._score_state(state, score_key), state) for state in results]
+        scores = [
+            (
+                self._score_state(
+                    state, score_key, transfer_penalty_minutes, stop_repeat_penalty_weight
+                ),
+                state,
+            )
+            for state in results
+        ]
         scores.sort(key=lambda tup: tup[0], reverse=True)
         return scores[0][1]
 
@@ -1929,10 +2191,19 @@ class PlannerService:
         idx = bisect_left(schedule.departures, earliest_depart)
         return schedule.edges[idx:]
 
-    def _score_state(self, state: SearchState, key: str) -> float:
+    def _score_state(
+        self,
+        state: SearchState,
+        key: str,
+        transfer_penalty_minutes: int = 0,
+        stop_repeat_penalty_weight: int = 0,
+    ) -> float:
         line_ids = [edge.line_id for edge in state.path]
         unique_lines = len(set(line_ids))
         repeat_penalty = max(0, len(line_ids) - unique_lines)
+        transfer_penalty_total = state.transfers * transfer_penalty_minutes
+        stop_repeat = sum(max(0, count - 1) for count in state.stop_visit_counts.values())
+        stop_repeat_penalty = stop_repeat * stop_repeat_penalty_weight
 
         if key == "loop":
             quadrants = bin(state.quadrant_mask).count("1")
@@ -1943,6 +2214,8 @@ class PlannerService:
                 + float(state.ride_minutes)
                 + diversity_bonus
                 - repeat_penalty_value
+                - transfer_penalty_total
+                - stop_repeat_penalty
             )
 
         if key == "unique":
@@ -1953,11 +2226,19 @@ class PlannerService:
                 + float(state.ride_minutes)
                 + diversity_bonus
                 - repeat_penalty_value
+                - transfer_penalty_total
+                - stop_repeat_penalty
             )
 
         diversity_bonus = unique_lines * 10
         repeat_penalty_value = repeat_penalty * 8
-        return float(state.ride_minutes) + diversity_bonus - repeat_penalty_value
+        return (
+            float(state.ride_minutes)
+            + diversity_bonus
+            - repeat_penalty_value
+            - transfer_penalty_total
+            - stop_repeat_penalty
+        )
 
     def _parse_segment_minutes(self, raw: str | None) -> int | None:
         if not raw:

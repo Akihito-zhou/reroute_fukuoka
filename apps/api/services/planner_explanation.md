@@ -85,6 +85,29 @@
 `planner.py` 文件实现了一个功能强大且复杂的公交路径规划系统。它不仅仅是找路，而是通过精巧的算法（RAPTOR 和 A\*）、详细的数据模型和灵活的配置，去解决一系列带有特殊优化目标的“寻路谜题”。每个函数和数据结构都为了这个最终目标而服务。
 
 ---
+
+## `services/` 目录职责与调用链
+
+- **`planner_constants.py`**：集中维护时间窗口、换乘缓冲、RAPTOR 扫描次数等常量，`PlannerService`、`raptor.py` 与 `planners/*` 共用一套阈值，方便统一调参。  
+- **`planner_models.py`**：提供 `Station`、`TripEdge`、`RouteData`、`ChallengeConfig`、`Label` 等数据结构，确保路网构建、RAPTOR、TSP、结果序列化之间类型一致。  
+- **`planner_loader.py`**：封装 CSV/YAML/GeoJSON 加载、TripEdge 构造、boundary 检测、实时数据刷新；`_load_static_assets`、`_load_edges`、`_refresh_stop_schedules` 均通过此模块工作。  
+- **`planner_utils.py`**：实现距离/投影/凸包/象限计算及 `label_leg_to_plan` 转换，RAPTOR 和 Simple RAPTOR 重复使用这些工具函数。  
+- **`raptor.py`**：包含 `run_raptor_challenge` 与 `_label_metrics`，与 `PlannerService` weak coupling，通过 `ChallengeConfig` 注入目标与约束。  
+- **`planner_cityloop.py`**：实现 TSP + Simple RAPTOR 组合（候选巡回生成、分段调用 `run_simple_raptor`、汇总 `LegPlan`），供 `planners/city_loop.py` 优先调用。  
+- **`realtime_timetable.py` / `RealtimeTimetableManager`**：对接 Ekispert API、维护缓存并回写 `_refresh_stop_schedules`；若无实时数据则退回静态 TripEdge。  
+- **`planners/` 子目录**：`longest_duration.py` 等模块通过 `get_config` / `plan` 封装不同的评分函数与约束组合，实际求解仍复用 `run_raptor_challenge` 或 `plan_city_loop_tsp`。  
+- **`services/__init__.py`**：统一导出 `PlannerService`、`PlannerError`、`planner_loader` 等，以便 API 层与测试用同一入口。
+
+### 调用顺序（数据→算法→结果）
+1. **初始化**：`PlannerService.__init__` 记录数据目录、实时开关、API Key。  
+2. **加载静态资源**：`_ensure_plans` 检查缓存 → `_load_static_assets` 读取站点/线路/边界 → `_load_edges` 解析 segments/timetable 为 TripEdge。  
+3. **构建路网**：`_refresh_stop_schedules` 生成 `StopSchedule`；`_build_route_timetables` 归并为 `RouteData` / `routes_by_stop`；`planner_loader.build_boundary_sequence` 生成城市边界站序。  
+4. **执行挑战**：`_compute_challenges` 调用各 `planners/*`：  
+   - Longest Duration / Most Stops / Longest Distance → `run_raptor_challenge`（若失败 fallback 到 `_plan_*_beam`）。  
+   - City Loop → `planner_cityloop.plan_city_loop_tsp`（基于 Simple RAPTOR）；无解时再以 `planners/city_loop.get_config` 驱动 RAPTOR。  
+5. **封装输出**：`label_leg_to_plan` 生成 `LegPlan`，`ChallengePlan` 按需缓存并写入 `apps/api/data/raptor_debug_*.json`，供 API (`list_challenges` / `get_challenge`) 返回给前端。
+
+---
 ---
 
 # planner.py 機能説明
@@ -172,3 +195,22 @@
 ### まとめ
 
 `planner.py`ファイルは、強力かつ複雑な公共交通機関の経路探索システムを実装しています。単に道を探すだけでなく、洗練されたアルゴリズム（RAPTORとA\*）、詳細なデータモデル、柔軟な設定を通じて、特殊な最適化目標を持つ一連の「探索パズル」を解決します。各関数とデータ構造は、すべてこの最終目標のために機能しています。
+
+## `services` ディレクトリの役割と呼び出しチェーン
+
+- **`planner_constants.py`**：時間窓・乗換バッファ・RAPTOR ラウンド数などの定数を集中管理し、`PlannerService` / `raptor.py` / `planners/*` が同じ値を参照できるようにする。  
+- **`planner_models.py`**：`Station`、`TripEdge`、`RouteData`、`ChallengeConfig`、`Label` などのデータ構造を定義し、ネットワーク構築〜RAPTOR〜TSP〜出力整形まで一貫した型を提供。  
+- **`planner_loader.py`**：CSV/YAML/GeoJSON の読み込み、TripEdge 生成、境界シーケンス検出、リアルタイム更新を担当し、`_load_static_assets` `_load_edges` `_refresh_stop_schedules` の実体作業を受け持つ。  
+- **`planner_utils.py`**：距離計算、平面投影、凸包・象限メトリクス、`label_leg_to_plan` などのユーティリティを提供し、RAPTOR と Simple RAPTOR の両方から利用される。  
+- **`raptor.py`**：`run_raptor_challenge` と `_label_metrics` を実装したアルゴリズム層で、`ChallengeConfig` を渡すだけでプランを得られる。  
+- **`planner_cityloop.py`**：TSP + Simple RAPTOR のハイブリッド戦略を実装し、City Loop チャレンジで最初に呼び出される。  
+- **`realtime_timetable.py` / `RealtimeTimetableManager`**：Ekispert API との連携・キャッシュ管理を担い、必要なら `_refresh_stop_schedules` へ最新 TripEdge を供給。  
+- **`planners/` 配下**：`longest_duration.py` などが `get_config` / `plan` を実装し、目標ごとにスコア関数・制約セットを切り替えつつ RAPTOR / Simple RAPTOR を再利用。  
+- **`services/__init__.py`**：`PlannerService` と主要型をエクスポートし、FastAPI 層やテストが同一の import 経路を使えるようにする。
+
+### 呼び出しフロー
+1. **初期化**：`PlannerService.__init__` がデータパスとリアルタイム設定を受け取る。  
+2. **静的ロード**：`_ensure_plans` がキャッシュを確認し、必要なら `_load_static_assets` → `_load_edges` を実行。  
+3. **ネットワーク構築**：`_refresh_stop_schedules` で停留所スケジュールを生成し、`_build_route_timetables` が `RouteData`/`routes_by_stop` を組み立て、`build_boundary_sequence` が City Loop 用境界列を作成。  
+4. **チャレンジ計算**：`_compute_challenges` が各 `planners/*` を呼び、Longest Duration/Most Stops/Longest Distance は RAPTOR（必要なら `_plan_*_beam` へフォールバック）、City Loop は TSP+Simple RAPTOR → RAPTOR の順に試す。  
+5. **結果整形**：`label_leg_to_plan` で `LegPlan` を生成し、`ChallengePlan` を API (`list_challenges` / `get_challenge`) に返しつつ、デバッグ用 JSON も出力する。

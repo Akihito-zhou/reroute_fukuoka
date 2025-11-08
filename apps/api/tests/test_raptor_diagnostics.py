@@ -5,13 +5,16 @@ from pathlib import Path
 
 import pytest
 
-from services.planner import (
-    START_TIME_MINUTES,
-    JourneyLeg,
-    Label,
-    PlannerError,
-    PlannerService,
+from services.planner import PlannerError, PlannerService
+from services.planner_constants import START_TIME_MINUTES
+from services.planner_models import JourneyLeg, Label
+from services.planners import (
+    city_loop,
+    longest_distance,
+    longest_duration,
+    most_stops,
 )
+from services.raptor import _label_metrics, run_raptor_challenge
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -28,7 +31,7 @@ def planner_service() -> PlannerService:
         service._load_edges(latest)
     except PlannerError as exc:
         pytest.skip(f"Segments could not be loaded: {exc}")
-    if not service._routes:
+    if not service.routes:
         print(
             "RAPTOR route tables are empty. Check segments CSV for consistent trip sequences."
         )
@@ -60,7 +63,7 @@ def _label_from_plan(service: PlannerService, plan) -> Label:
         prev_leg = leg
     quadrant_mask = 0
     for code in visited:
-        quadrant_mask |= service._quadrant_map.get(code, 0)
+        quadrant_mask |= service.quadrant_map.get(code, 0)
     journey_legs = tuple(
         JourneyLeg(
             line_id=leg.line_id,
@@ -93,7 +96,7 @@ def _label_from_plan(service: PlannerService, plan) -> Label:
 
 def _collect_plan_stats(service: PlannerService, plan) -> dict:
     label = _label_from_plan(service, plan)
-    metrics = service._label_metrics(label)
+    metrics = _label_metrics(service, label)
     stop_counts: Counter[str] = Counter()
     line_counts: Counter[str] = Counter()
     min_transfer_gap = None
@@ -145,7 +148,7 @@ def _print_plan_summary(service: PlannerService, tag: str, plan) -> dict:
 def _diagnose_config(service: PlannerService, tag: str, config) -> None:
     print(f"\n=== {tag} Diagnostics ===")
     start = time.perf_counter()
-    plan = service._run_raptor_challenge(config)
+    plan = run_raptor_challenge(service, config)
     duration = time.perf_counter() - start
     print(f"{tag} computed in {duration:.2f}s")
     if plan is None:
@@ -155,7 +158,7 @@ def _diagnose_config(service: PlannerService, tag: str, config) -> None:
     expectations = ROUTE_EXPECTATIONS.get(tag)
     if expectations:
         _assert_plan_constraints(
-            stats, expectations, set(service._hakata_stops or [])
+            stats, expectations, set(service.hakata_stops or [])
         )
 
 
@@ -213,7 +216,7 @@ ROUTE_EXPECTATIONS = {
 
 
 def test_boundary_sequence(planner_service: PlannerService) -> None:
-    seq = planner_service._boundary_sequence
+    seq = planner_service.boundary_sequence
     print(f"Boundary sequence length: {len(seq)}")
     if seq:
         print("Boundary sample:", seq[: min(10, len(seq))])
@@ -223,21 +226,21 @@ def test_boundary_sequence(planner_service: PlannerService) -> None:
 
 def test_raptor_longest_duration(planner_service: PlannerService) -> None:
     _diagnose_config(
-        planner_service, "Longest Duration", planner_service._config_longest_duration()
+        planner_service, "Longest Duration", longest_duration.get_config(planner_service)
     )
 
 
 def test_raptor_most_stops(planner_service: PlannerService) -> None:
     _diagnose_config(
-        planner_service, "Most Stops", planner_service._config_most_stops()
+        planner_service, "Most Stops", most_stops.get_config(planner_service)
     )
 
 
 def test_raptor_city_loop(planner_service: PlannerService) -> None:
-    _diagnose_config(planner_service, "City Loop", planner_service._config_city_loop())
+    _diagnose_config(planner_service, "City Loop", city_loop.get_config(planner_service))
 
 
 def test_raptor_longest_distance(planner_service: PlannerService) -> None:
     _diagnose_config(
-        planner_service, "Longest Distance", planner_service._config_longest_distance()
+        planner_service, "Longest Distance", longest_distance.get_config(planner_service)
     )

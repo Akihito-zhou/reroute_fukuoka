@@ -6,13 +6,13 @@
     "距離最大化",
     "耐久"
   ],
-  "start_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
+  "start_stop": "川端町・博多座前／西鉄バス",
   "start_time": "07:00",
-  "total_ride_minutes": 9,
-  "total_distance_km": 154.0,
-  "transfers": 4,
+  "total_ride_minutes": 523,
+  "total_distance_km": 193.4,
+  "transfers": 5,
   "wards": [
-    "福岡市北西エリア"
+    "福岡市内"
   ],
   "badges": [
     "最長距離"
@@ -20,151 +20,196 @@
   "legs": [
     {
       "sequence": 1,
-      "line_label": "120",
-      "line_name": "西鉄バス・６・普通・キャナル博多・博多駅行",
-      "from_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
-      "to_stop": "別府橋／西鉄バス",
-      "departure": "07:05",
-      "arrival": "07:14",
-      "ride_minutes": 9,
-      "distance_km": 19.5,
+      "line_label": "1766",
+      "line_name": "西鉄バス・３１・普通・篠栗・日の浦口行",
+      "from_stop": "博多五町／西鉄バス",
+      "to_stop": "原町(粕屋町)／西鉄バス",
+      "departure": "07:38",
+      "arrival": "06:25",
+      "ride_minutes": 0,
+      "distance_km": 19.4,
       "notes": [
-        "停車数: 16"
+        "停車数 16"
       ],
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            130.421197,
-            33.587089
+            130.408116,
+            33.593688
           ],
           [
-            130.377411,
-            33.573305
+            130.473975,
+            33.609708
           ]
         ]
       },
       "path": [
         {
-          "lat": 33.587089,
-          "lon": 130.421197
+          "lat": 33.593688,
+          "lon": 130.408116
         },
         {
-          "lat": 33.573305,
-          "lon": 130.377411
+          "lat": 33.609708,
+          "lon": 130.473975
         }
       ],
       "from_coord": {
-        "lat": 33.587089,
-        "lon": 130.421197
+        "lat": 33.593688,
+        "lon": 130.408116
       },
       "to_coord": {
-        "lat": 33.573305,
-        "lon": 130.377411
+        "lat": 33.609708,
+        "lon": 130.473975
       }
     },
     {
       "sequence": 2,
-      "line_label": "153",
-      "line_name": "西鉄バス・８・普通・博多駅行",
-      "from_stop": "別府橋／西鉄バス",
-      "to_stop": "天神一丁目(福岡市)／西鉄バス",
-      "departure": "07:19",
-      "arrival": "07:04",
+      "line_label": "1766",
+      "line_name": "西鉄バス・３１・普通・篠栗・日の浦口行",
+      "from_stop": "原町(粕屋町)／西鉄バス",
+      "to_stop": "呉服町大島眼科／西鉄バス",
+      "departure": "07:26",
+      "arrival": "06:18",
       "ride_minutes": 0,
-      "distance_km": 37.49,
+      "distance_km": 41.27,
       "notes": [
-        "停車数: 26"
+        "停車数 26"
       ],
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            130.377411,
-            33.573305
+            130.473975,
+            33.609708
           ],
           [
-            130.404958,
-            33.585344
+            130.412597,
+            33.595305
           ]
         ]
       },
       "path": [
         {
-          "lat": 33.573305,
-          "lon": 130.377411
+          "lat": 33.609708,
+          "lon": 130.473975
         },
         {
-          "lat": 33.585344,
-          "lon": 130.404958
+          "lat": 33.595305,
+          "lon": 130.412597
         }
       ],
       "from_coord": {
-        "lat": 33.573305,
-        "lon": 130.377411
+        "lat": 33.609708,
+        "lon": 130.473975
       },
       "to_coord": {
-        "lat": 33.585344,
-        "lon": 130.404958
+        "lat": 33.595305,
+        "lon": 130.412597
       }
     },
     {
       "sequence": 3,
-      "line_label": "1100",
-      "line_name": "西鉄バス・８・普通・博多駅行",
-      "from_stop": "天神一丁目(福岡市)／西鉄バス",
-      "to_stop": "六本松(福銀前)／西鉄バス",
-      "departure": "07:18",
-      "arrival": "06:13",
+      "line_label": "1664",
+      "line_name": "西鉄バス・４００・普通・甘木営行",
+      "from_stop": "呉服町大島眼科／西鉄バス",
+      "to_stop": "呉服町／西鉄バス",
+      "departure": "08:08",
+      "arrival": "07:18",
       "ride_minutes": 0,
-      "distance_km": 31.29,
+      "distance_km": 64.92,
       "notes": [
-        "停車数: 24"
+        "停車数 27"
       ],
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            130.404958,
-            33.585344
+            130.412597,
+            33.595305
           ],
           [
-            130.379827,
-            33.574377
+            130.41288,
+            33.593838
           ]
         ]
       },
       "path": [
         {
-          "lat": 33.585344,
-          "lon": 130.404958
+          "lat": 33.595305,
+          "lon": 130.412597
         },
         {
-          "lat": 33.574377,
-          "lon": 130.379827
+          "lat": 33.593838,
+          "lon": 130.41288
         }
       ],
       "from_coord": {
-        "lat": 33.585344,
-        "lon": 130.404958
+        "lat": 33.595305,
+        "lon": 130.412597
       },
       "to_coord": {
-        "lat": 33.574377,
-        "lon": 130.379827
+        "lat": 33.593838,
+        "lon": 130.41288
       }
     },
     {
       "sequence": 4,
+      "line_label": "1236",
+      "line_name": "西鉄バス・１２・普通・六本松－福大前・片江営行",
+      "from_stop": "東中洲／西鉄バス",
+      "to_stop": "護国神社前／西鉄バス",
+      "departure": "07:26",
+      "arrival": "07:55",
+      "ride_minutes": 29,
+      "distance_km": 5.92,
+      "notes": [
+        "停車数 7"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            130.407622,
+            33.590372
+          ],
+          [
+            130.384299,
+            33.577171
+          ]
+        ]
+      },
+      "path": [
+        {
+          "lat": 33.590372,
+          "lon": 130.407622
+        },
+        {
+          "lat": 33.577171,
+          "lon": 130.384299
+        }
+      ],
+      "from_coord": {
+        "lat": 33.590372,
+        "lon": 130.407622
+      },
+      "to_coord": {
+        "lat": 33.577171,
+        "lon": 130.384299
+      }
+    },
+    {
+      "sequence": 5,
       "line_label": "153",
       "line_name": "西鉄バス・８・普通・博多駅行",
       "from_stop": "護国神社前／西鉄バス",
       "to_stop": "天神一丁目(福岡市)／西鉄バス",
-      "departure": "07:05",
-      "arrival": "06:24",
+      "departure": "08:06",
+      "arrival": "08:03",
       "ride_minutes": 0,
       "distance_km": 42.46,
       "notes": [
-        "停車数: 31"
+        "停車数 31"
       ],
       "geometry": {
         "type": "LineString",
@@ -199,17 +244,17 @@
       }
     },
     {
-      "sequence": 5,
-      "line_label": "120",
-      "line_name": "西鉄バス・６・普通・キャナル博多・博多駅行",
+      "sequence": 6,
+      "line_label": "124",
+      "line_name": "西鉄バス・６・普通・鳥飼－西新四－博物館南口・福岡タワー行",
       "from_stop": "天神一丁目(福岡市)／西鉄バス",
-      "to_stop": "博多駅(Ａ・Ｅ・Ｆ)／西鉄バス",
-      "departure": "13:17",
-      "arrival": "09:02",
-      "ride_minutes": 0,
-      "distance_km": 23.25,
+      "to_stop": "キャナルシティ博多前(櫛田神社前駅)／西鉄バス",
+      "departure": "08:09",
+      "arrival": "16:23",
+      "ride_minutes": 494,
+      "distance_km": 19.48,
       "notes": [
-        "停車数: 18"
+        "停車数 14"
       ],
       "geometry": {
         "type": "LineString",
@@ -219,8 +264,8 @@
             33.585344
           ],
           [
-            130.421197,
-            33.587089
+            130.413722,
+            33.588111
           ]
         ]
       },
@@ -230,8 +275,8 @@
           "lon": 130.404958
         },
         {
-          "lat": 33.587089,
-          "lon": 130.421197
+          "lat": 33.588111,
+          "lon": 130.413722
         }
       ],
       "from_coord": {
@@ -239,21 +284,23 @@
         "lon": 130.404958
       },
       "to_coord": {
-        "lat": 33.587089,
-        "lon": 130.421197
+        "lat": 33.588111,
+        "lon": 130.413722
       }
     }
   ],
   "rest_stops": [
     {
-      "at": "六本松(福銀前)／西鉄バス",
-      "minutes": 52,
-      "suggestion": "軽くストレッチしてリフレッシュ。"
+      "start_after": "06:25",
+      "resume_at": "07:26",
+      "duration_minutes": 61,
+      "idea": "コンビニで飲み物を補給しよう"
     },
     {
-      "at": "天神一丁目(福岡市)／西鉄バス",
-      "minutes": 413,
-      "suggestion": "周辺を5分だけ散策して気分転換。"
+      "start_after": "06:18",
+      "resume_at": "08:08",
+      "duration_minutes": 110,
+      "idea": "近くのベーカリーでテイクアウトを"
     }
   ]
 }

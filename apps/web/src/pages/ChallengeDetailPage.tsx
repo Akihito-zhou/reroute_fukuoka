@@ -166,6 +166,29 @@ const ChallengeDetailPage: React.FC = () => {
                 <RouteMap legs={detail.legs} />
               </section>
 
+              {detail.statistics && Object.keys(detail.statistics).length > 0 && (
+                <section className="space-y-4">
+                  <h2 className="text-lg font-semibold uppercase tracking-[0.3em] text-slate-200">
+                    詳細統計
+                  </h2>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                    {Object.entries(detail.statistics).map(([key, value]) => (
+                      <div
+                        key={key}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
+                      >
+                        <p className="text-xs font-medium uppercase tracking-widest text-slate-400">
+                          {key}
+                        </p>
+                        <p className="mt-2 text-xl font-semibold text-white">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               <section className="space-y-5 rounded-3xl border border-white/10 bg-white/[0.03] p-6 shadow-lg shadow-black/20 md:p-8">
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                   <div>

@@ -38,14 +38,14 @@ services:
     working_dir: /app
     command: sh -lc "
       corepack enable &&
-      corepack prepare pnpm@9.0.0 --activate &&
+      corepack prepare pnpm@8.15.4 --activate &&
       pnpm install --recursive &&
-      pnpm --filter ./apps/web dev --host 0.0.0.0 --port 5173 "
+      pnpm --filter ./apps/web dev --host 0.0.0.0 --port 6001 "
     depends_on:
       api:
         condition: service_started
     ports:
-      - "5173:5173"
+      - "6001:6001"
     environment:
       - NODE_ENV=development
     volumes:

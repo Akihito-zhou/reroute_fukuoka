@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Fetch bus timetable segments (edge-based) by calling /v1/json/bus/timetable
 for every adjacent stop pair in line_stop_edges.csv.
@@ -21,7 +20,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import pandas as pd
 import requests
@@ -83,7 +81,7 @@ def fetch_pair(
 
 def parse_segments(
     payload: dict,
-) -> List[Tuple[str, str, str]]:
+) -> list[tuple[str, str, str]]:
     """
     Return list of (trip_id, depart, arrive) for one from→to request.
     """
@@ -93,7 +91,7 @@ def parse_segments(
     lines = timetable.get("Line") or []
     if isinstance(lines, dict):
         lines = [lines]
-    segments: List[Tuple[str, str, str]] = []
+    segments: list[tuple[str, str, str]] = []
     for idx, item in enumerate(lines):
         trip_id = str(item.get("trainID") or idx)
         dep = (item.get("DepartureState") or {}).get("Datetime", {}).get("text") or ""
@@ -102,7 +100,7 @@ def parse_segments(
     return segments
 
 
-def load_line_edges(path: Path) -> Dict[str, List[str]]:
+def load_line_edges(path: Path) -> dict[str, list[str]]:
     if not path.exists():
         print(f"❌ missing line_stop_edges: {path}", file=sys.stderr)
         sys.exit(1)
@@ -116,7 +114,7 @@ def load_line_edges(path: Path) -> Dict[str, List[str]]:
     return df.groupby("line_id", sort=False)["station_code"].apply(list).to_dict()
 
 
-def load_station_names(path: Path) -> Dict[str, str]:
+def load_station_names(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
     df = pd.read_csv(path, dtype={"ekispert_station_code": str, "name": str})
@@ -127,7 +125,7 @@ def load_station_names(path: Path) -> Dict[str, str]:
     }
 
 
-def within_window(time_text: str, window: Tuple[str, str] | None) -> bool:
+def within_window(time_text: str, window: tuple[str, str] | None) -> bool:
     if not window or not time_text:
         return True
     hhmm = time_text[:5]
@@ -202,7 +200,7 @@ def main() -> None:
         selected = line_edges
 
     window = tuple(args.window) if args.window else None
-    records: List[List[str]] = []
+    records: list[list[str]] = []
     processed = 0
 
     for line_id, stops in tqdm(selected.items(), desc="bus/timetable"):
@@ -213,7 +211,7 @@ def main() -> None:
             continue
 
         for direction, sequence in (("Up", ordered), ("Down", list(reversed(ordered)))):
-            trip_segments: Dict[str, Dict[int, Tuple[str, str, str, str]]] = {}
+            trip_segments: dict[str, dict[int, tuple[str, str, str, str]]] = {}
             for idx in range(len(sequence) - 1):
                 frm = sequence[idx]
                 to = sequence[idx + 1]
@@ -223,7 +221,7 @@ def main() -> None:
                     continue
                 from_name = station_names.get(frm, frm)
                 to_name = station_names.get(to, to)
-                for seg_idx, (trip_id, dep, arr) in enumerate(segments):
+                for _seg_idx, (trip_id, dep, arr) in enumerate(segments):
                     dep_norm = normalize_time(dep)
                     arr_norm = normalize_time(arr)
                     if dep_norm and not within_window(dep_norm, window):

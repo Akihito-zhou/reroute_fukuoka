@@ -1,199 +1,771 @@
-# 開発ログ（〜2025/10/28）
+# 開発ログ（〜2025/11/08）
+
+
 
 ## 実装済み機能まとめ
 
+
+
 - **バックエンド（apps/api）**
+
   - `main.py` / `routes.py`：FastAPI を起動し、`/api/v1/challenges` でチャレンジ一覧を返却。`PlannerService` が成功した場合は計算結果、失敗時はフォールバックの静的データを返す。
+
   - `schemas.py`：フロントエンドに渡すレスポンスの Pydantic スキーマ。
+
   - `services/planner.py`：駅データ（`stations.csv`）、フリーパス路線（`freepass_lines.yml`）、最新の時刻表（`timetable_*.csv`）を読み込み、時空間グラフを構築。3 種類のチャレンジ（24 時間最長乗車、ユニーク停留所最多、市内四象限ループ）を Beam Search ベースの探索で生成する。
+
   - `tools/` 配下の各スクリプト
+
     - `fetch_dump_stations.py`（既存）：Mixway から停留所情報を取得し `stations.csv` を生成。
+
     - `fetch_operation_lines.py`（既存）：`/search/course/extreme` を使って路線 ID と停留所列を推定し `lines_from_extreme.csv` / `line_stop_edges.csv` を生成。
+
     - `tag_freepass.py`：上記路線と福岡市 GeoJSON から「福岡市内フリーパス対象路線」を判定し `freepass_lines.yml` を出力。
+
     - `fetch_bus_timetable.py`：`line_stop_edges.csv` の各路線に対して首尾 2 停を from/to として `/v1/json/bus/timetable` を呼び、結果を `timetable_YYYYMMDD.csv` に保存（現状は始発・終点のみの時刻しか得られない）。
 
+
+
 - **フロントエンド（apps/web）**
+
   - Vite + React + Tailwind。`App.tsx` が API のチャレンジ一覧を取得してカード表示。Framer Motion でアニメーションを付加。
+
   - Hero 部は「博多発 3 大チャレンジ（最長乗車／最多停留所／市内一周）」を説明。タグフィルタでテーマ絞り込み可。
+
   - 詳細パネルには `legs` と `rest_stops` を時系列で表示。
 
+
+
 - **データファイル（apps/api/data）**
+
   - `stations.csv`：エキスパート停留所コード・名称・緯度経度。
+
   - `line_stop_edges.csv`：line_id ごとの停留所シーケンス。`fetch_bus_timetable.py` の from/to 推定にも使用。
+
   - `lines_from_extreme.csv`：路線 ID とサンプル名称・会社名。
+
   - `freepass_lines.yml`：福岡市内 24h フリーパス対象路線の判定結果。
+
   - `fukuoka_city.geojson`：福岡市境界。Planner が停留所を四象限に分ける際に利用。
+
   - `timetable_YYYYMMDD.csv`：外部 API から取得した時刻表。現状は始発／終点のみが記録されるため、詳細な乗換計画には不足。
+
+
 
 ## 現状の課題
 
+
+
 1. **チャレンジ生成が「午前中」「短距離」に偏る**  
+
    - `fetch_bus_timetable.py` が from/to の組み合わせで路線全区間の出発・到着時刻のみ取得しているため、中間停留所の時刻が一切手に入っていない。  
+
    - その結果、`PlannerService` は実際の乗継を再現できず、フォールバックチャレンジ（静的モック）を返している。よって UI に表示されるルートは 6～8 区間の短い行程に固定されている。
 
+
+
 2. **「ユニーク停留所最多」の要件未満**  
+
    - 実データの最長路探索が未稼働のため、実際には数十停留所しか含まれないモックを表示。CSV に含まれる数千停留所を探索に活かしきれていない。
 
+
+
 3. **24 時間制約の判定が実質機能していない**  
+
    - グラフが構築できないので `START_TIME_MINUTES + 24h` まで進むケースが存在せず、結果的に「午前のみ」で終わるように見える。
 
+
+
 4. **時刻表 API からの情報不足**  
+
    - `/bus/timetable` は `from` と `to` の 2 点間のみ返す仕様のため、中間停留所が欠落する。`operationLine/timetable` など別エンドポイントで全停留所の StopTime を取得する必要がある。
+
+
 
 ## 生成アルゴリズムの概要
 
+
+
 1. **データ読み込み**  
+
    - `stations.csv` → code, name, lat/lon。  
+
    - `freepass_lines.yml` → フリーパス対象路線のみを探索対象に残す。  
+
    - 最新の `timetable_*.csv` → TripEdge（line_id, trip_id, from/to, depart/arrive）を生成。  
+
    - 四象限マッピング：緯度経度の中央値で NE/SE/SW/NW を割り当て、市内一周の達成判定に使用。
 
+
+
 2. **時空間グラフ構築**  
+
    - 各停留所ごとに「発車時刻昇順の Edge リスト（StopSchedule）」を持たせる。  
+
    - Edge（TripEdge）: 同一 trip 内で隣接する停留所間の移動、乗車時間・距離を保持。  
+
    - 時刻は `datetime.strptime`＋日跨ぎ補正（rollover）で分単位に正規化。
 
+
+
 3. **探索ロジック**  
+
    - Beam Search 形式。状態は `(現在停留所, 現在時刻, 累計乗車分, 訪問済み停留所集合, 四象限ビットマスク)`。  
+
    - 制約：出発は博多駅周辺停留所、`START_TIME`（07:00）から 24 時間以内。乗換バッファは 3 分。  
+
    - `score_key` に応じて評価関数を切替え:  
+
      - `ride`: 累計乗車分を最大化。  
+
      - `unique`: ユニーク停留所数を優先し、同点時に乗車分で比較。  
+
      - `loop`: 四象限の到達数を優先し、次に乗車分。  
+
    - 結果は TripEdge を連結し `LegPlan`（路線まとめ）へ圧縮した上で API に返却。
 
+
+
 4. **フォールバック（現在表示されている状態）**  
+
    - Planner が例外を投げた場合、`data/challenges.py` の静的 3 ルートを返す。これが現在 UI に出ている「午前のみ」のルート。
+
+
 
 ## 今後の対応方針
 
+
+
 - `/bus/timetable` ではなく `/v1/json/operationLine/timetable` など「停留所ごとの StopTime を返す」エンドポイントに切り替え、`timetable_*.csv` をフル区間の形で再生成する。  
+
 - 生成した CSV を `PlannerService` に読み込ませ、実際の 24 時間探索を有効化する。  
+
 - 四象限やユニーク停留所の判定が機能するかを改めて検証し、問題があれば Beam Search の枝刈りやペナルティ設定を調整する。  
+
 - 生成結果が 24 時間全体に分布しているか、停留所数・距離が期待通りかを可視化（ログ出力や `log.md` の追記など）して共有する。
+
+
 
 以上が 2025/10/26 時点での到達点と課題です。***
 
+
+
 ---
+
+
 
 ## 2025/10/27 
 
+
+
 ### ✅ 実装・改善
+
 - **区間単位の時刻表取得に刷新**  
+
   `fetch_bus_timetable.py` を全面改修し、`line_stop_edges.csv` の隣接停留所ごとに `/v1/json/bus/timetable` を呼び出して区間（segment）単位のデータを生成。出力を `segments_YYYYMMDD.csv` に切り替え、全 683 路線について 2025-10-26 のデータを取得。
+
 - **Planner の segments 対応**  
+
   `_find_latest_data_file()` で `segments_*.csv` を優先検出し、`_load_segment_edges()` を新設。区間データから `TripEdge` を直接生成し、StopSchedule を組み立てられるようにした。従来の `timetable_*.csv` もフォールバックとして残存。
+
 - **スコアリングと探索パラメータの調整**  
+
   `_score_state()` に路線多様性ボーナスと重複ペナルティを導入。`MAX_QUEUE_SIZE` / `MAX_EXPANSIONS` を引き上げ、`_run_search()` に可変パラメータ（max_queue / max_expansions / max_branch）を追加。`_plan_city_loop()` では 2 段階のリトライを実装して四象限ループを拾いやすくした。
+
 - **3種チャレンジ用テスト整備**  
+
   `tests/test_planner_segments.py` を作成し、segments 読み込み後に `_plan_longest_duration()` / `_plan_most_unique_stops()` / `_plan_city_loop()` をそれぞれ実行。各チャレンジの先頭 10 区間を標準出力し、フル結果を `debug_longest_duration.json` / `debug_most_unique.json` / `debug_city_loop.json` に保存するよう変更。
+
 - **API レイヤの動作確認**  
+
   `service.list_challenges()` が fallback せず 3 ルートを返すことを確認。フロントエンド（`/api/v1/challenges`）からも最新チャレンジが取得可能に。
 
+
+
 ### 🔍 アルゴリズム挙動メモ
+
 - 区間データから 24 時間ビームサーチを再実行すると、最長乗車ルートは 87 区間・522 分、ユニーク停留所ルートは 92 区間・439 分、市内ループは 89 区間・497 分を到達。各 JSON に全 legs を保存済み。
+
 - 重複ペナルティ導入後も、一部の長距離便で往復が残る（特に `3597` 系統）。これは「乗車時間最大化」を最優先にしているためで、今後は区間別クールタイムや路線単位の出現上限を導入する余地あり。
+
 - 市内ループは fallback で「四象限が 3 つでも許容」するよう緩和したため、現行データでは北西寄りのルートが選ばれやすい。象限バランスを調整するなら quadrant ごとの最低訪問回数を別途課す必要がある。
 
+
+
 ### ⚠️ 未解決・要改善ポイント
+
 - **スタート時刻の上限設定**：segments を 24 時間ぶん取得しているため、07:00 以前に出発する区間も検索対象に残っている。`START_TIME_MINUTES` を基準に早朝便を除外するフィルタが必要。
+
 - **探索コスト**：`MAX_EXPANSIONS` を大きくしたことで city-loop が成立したが、全探索で 20～30 秒かかるケースがある。キャッシュや事前アンカー指定で探索幅を減らす対策が必要。
+
 - **ルート品質**：現状は距離や停留所の偏りを緩和するための制約が不足。以下を今後の候補とする。
+
   - 路線ごとのクールタイム／乗車回数上限。
+
   - 一定範囲内の停留所重複（徒歩圏内の同系列停留所）を同一扱いするルール。
+
   - 休憩ポイントや乗継余裕時間を評価に組み込む。
+
 - **リアルタイム化**：segments を全路線で生成すると API 呼び出し数が大きいため、将来的には `--line_ids` + `--window` を使った部分更新、または pattern API によるオンデマンド補正が必要。
 
+
+
 ### 📎 チェックに使うコマンド
+
 ```bash
+
 # 区間取得
+
 python tools/fetch_bus_timetable.py --date 20251026 --limit 0 --sleep 0.3
 
+
+
 # 3種チャレンジのテスト＆JSON出力
+
 poetry run pytest -s tests/test_planner_segments.py
 
+
+
 # API 経由でチェック
+
 poetry run python - <<'PY'
+
 from services.planner import PlannerService, PlannerError
 
+
+
 service = PlannerService()
+
 try:
+
     for plan in service.list_challenges():
+
         print(plan['id'], plan['total_ride_minutes'])
+
 except PlannerError as exc:
+
     print('fallback:', exc)
+
 PY
+
 ```
+
+
 
 以上が 2025/10/27 の成果と残課題です。
 
+
+
 ---
+
+
 
 ## 2025/10/28
 
+
+
 ### 🔰 背景と到達点
+
 - これまでの課題（短距離の静的モックしか返らない・実データ探索が成立しない）を踏まえ、**データ収集 → グラフ構築 → 探索 → API → フロント描画** の全工程を改めて整理し、欠落していたドキュメントを補完した。
+
 - 特に「なぜ区間単位で時刻表を取得するのか」「探索ロジックの内部構造」「リアルタイム補正の流れ」「Leaflet による描画手順」といった暗黙知を明文化。
 
+
+
 ### 🚌 時刻表収集の全体像（0 → 100）
+
 1. **種データ作成**  
+
    - `/v1/json/search/course/extreme` を使うツール（`tools/fetch_operation_lines.py`）で、代表ルートから路線 ID と停留所列を推定し `line_stop_edges.csv` を生成。  
+
    - 停留所位置は `/v1/json/station`（もしくは BC のバルク CSV）を `tools/fetch_dump_stations.py` で保存し `stations.csv` に集約。
+
 2. **区間化の必然性**  
+
    - `/v1/json/bus/timetable` は **from・to を指定した区間** のみ返す API。全停留所の時刻表を得るには、路線上の隣接停留所ペアをすべて走査するしかない。  
+
    - 1 区間ずつ取得することで、trip_id ごとの厳密な出発・到着時刻、延着の有無を取りこぼさず収集できる。  
+
    - 各 API 呼び出しはキャッシュ（`tools/.cache_ttb`）に保存し、再実行時は 200 件超の再取得を避ける。  
+
 3. **CSV 生成**  
+
    - `fetch_bus_timetable.py` は `(line_id, direction, service_date, from_stop, to_stop, depart, arrive, segment_id)` を縦持ちした `segments_YYYYMMDD.csv` を出力。trip_id が無い場合は `segment_id` を代替キーにする。  
+
    - これが Planner のグラフ入力となり、1 行 = 1 エッジ、として扱える。
 
+
+
 ### 🗺️ グラフ構築とデータ流通
+
 - `PlannerService._load_segment_edges()` が `segments` CSV を読み込み `TripEdge` を生成。`TripEdge` には line 名・trip ID・前後停留所名・分単位の depart/arrive・距離（`haversine_km`）・緯度経度をすべて格納。  
+
 - 同一停留所のエッジは `StopSchedule`（depart 昇順）に集約され、`bisect_left` で「指定時刻以降の便」を即座に引ける。  
+
 - 連続する trip 内区間は `collapse_edges()` で 1 レグに圧縮し、レスポンスでは `geometry`（GeoJSON LineString）と `path`（lat/lon 配列）を両方提供。フロントはどちらでも描画可能。
 
+
+
 ### 🛰️ リアルタイム補正エンジン
+
 - 環境変数 `PLANNER_ENABLE_REALTIME=true` と `EKISPERT_API_KEY=<mixway-key>` を指定すると、`EkispertBusClient` が `/v1/json/realtime/trip`・`/v1/json/realtime/search/course/extreme` 等にアクセス可能になる。  
+
 - `RealtimeTimetableManager` は静的 `TripEdge` を保持しつつ、TTL（デフォ 120 秒）を超えたらリアルタイムを取得→区間別に `depart/arrive/status/delay` を上書き。キャンセル便は検索対象から除外。  
+
 - 失敗時は静的データにフォールバックし、`routes.py` の `_debug_cache` で `debug_*.json` を返す仕組みも用意。こうして API は常に 3 ルートを提供できる。
 
+
+
 ### 🔍 探索アルゴリズム詳細
+
 - **手法**：RAPTOR ではなく、課題に合わせた **Beam Search / Best First Search** を採用。  
+
   - 状態 `SearchState`：  
+
     ```
+
     priority（ヒープキー）, ride_minutes, current_time,
+
     stop_code, path(TripEdge 配列), visited(停留所集合),
+
     unique_count, quadrant_mask
+
     ```
+
   - 初期状態は博多駅周辺の複数停留所。`quadrant_mask` は市内を NE/SE/SW/NW の 4 象限に分けたビットフラグ。  
+
   - `priority` は `_score_state` が `score_key`（ride/unique/loop）に応じて決定。  
+
     - `ride`: 乗車分 + 路線多様性ボーナス − 重複路線ペナルティ。  
+
     - `unique`: ユニーク停留所数 × 1200 + 乗車分 + 路線多様性 ×12 − 重複 ×6。  
+
     - `loop`: 象限達成数×2000 + 乗車分 + 路線多様性 ×15 − 重複 ×4。  
+
   - 制約：キュー上限（既定 2000～5200）、分岐数（6～18）、最大展開回数、24 時間以内、乗換バッファ 3 分。  
+
   - 完了条件：パスが存在し、博多系停留所へ戻り、開始から 120 分以上経過。`loop` の場合は全象限達成で即打ち切り。
+
 - **ヒューリスティック**：重複路線を罰するほか、象限未達成の場合は**初期遷移で同象限へ戻らないようスキップ**し、探索を外側へ広げる。  
+
 - Beam Search を選んだ理由：RAPTOR は厳密最適性が強みだが、今回の 3 ルートは「耐久」「ユニーク」「象限」など複合スコアが目的で、Pareto 最適ではなくカスタム評価が必要だったため。
 
+
+
 ### 🗺️ フロント描画の実装ディテール
+
 - スタック：React 18 + Vite + Tailwind + Framer Motion。  
+
 - ルーティング：`react-router-dom` の `BrowserRouter` で `/`（概要）と `/challenge/:id`（詳細）を分離。  
+
 - 地図：`react-leaflet` + CARTO Light タイル。  
+
   - `RouteMap` は `path` → `geometry.coordinates` → `from_coord/to_coord` の順で座標配列を決定し、`Polyline`（太さ 5）で leg ごとの折線を描画。  
+
   - `FitBounds` コンポーネントで全座標からバウンディングボックスを計算し、自動ズーム。  
+
   - `CircleMarker` でスタート（シアン）/ゴール（オレンジ）を表示。  
+
   - path が欠落している旧フォーマットにも対応するため、起終点しか無い場合は直線 2 点を生成して描画。
 
+
+
 ### ✅ データ検証と運用メモ
+
 - `pytest apps/api/tests/test_planner_segments.py` で最新 CSV を用いたチャレンジ出力を再生成し、`debug_*.json` を更新。  
+
 - `curl http://localhost:8000/api/v1/challenges/longest-duration | jq '.legs[0]'` で geometry/path の存在を確認。  
+
 - Docker（`make up-dev`）起動時は API と Web がホットリロードするため、コード更新後は必ず `make down-dev && make up-dev` で再起動してキャッシュを更新する。
 
+
+
 ### 📌 今後の改善ポイント
+
 - **データ収集**：バッチ取得の高速化、`/operationLine/timetable` など全停留所を返す API の再調査、`--line_ids` を使った差分更新。  
+
 - **探索性能**：路線クールタイム、象限達成のヒューリスティック強化、RAPTOR/CSA へのリプレース検討、探索統計のメトリクス化。  
+
 - **リアルタイム**：TTL の動的制御、複数 trip クエリのバッチング、API 失敗時のリトライ戦略強化、フォールバック検知ログ。  
+
 - **UI**：区間ハイライト、 hover tooltip、行程の共有ボタン、i18n（日本語/中国語/英語）切り替え。  
+
 - **テスト**：API の契約テスト・フロント E2E を追加し、リアルタイム補正時のリグレッションを検知できるようにする。
 
+
+
 ---
+
+
+
+## 2025/11/01
+
+
+
+### 🧪 今日の進捗と現状
+
+- Mixway の `/v1/json/bus/timetable` を使って `segments_20251101.csv` を再生成（915,619 区間）。`stop_seq` の欠損を補正した上で `trip_id` を残し、`PlannerService` 側で `trip_id` が無い行は `segment_id` をフォールバックキーにするよう調整。  
+
+- `_build_route_timetables()` で RAPTOR 用のルート表をプリコンパイル。`MAX_ROUTES_FOR_RAPTOR=120` と `MAX_TRIPS_PER_ROUTE=25` で上限を掛け、さらに停留所列は先頭 15 駅までに抑えてメモリと探索時間を制御。結果として 902 個の停留所スケジュールから 120 ルートが生成され、各ルートの trip は時刻昇順に揃えられる。  
+
+- 境界検出を強化し、福岡市境界ポリゴンから距離 0.3〜4.0km・博多駅から一定距離以上の停留所を抽出。`BOUNDARY_BIN_COUNT=18` の角度ビンごとに代表停留所を選ぶことで、境界シーケンス（本日時点で 8 駅）が安定して得られるようになった。  
+
+- Beam Search から RAPTOR 風のラベル伝搬に置き換え。`Label` に距離・訪問集合・象限ビット・legs を保持し、チャレンジごとに `scoring_fn / dominance_fn / accept_fn` を差し替えられるよう `ChallengeConfig` を導入。24h 制約、乗換バッファ 3 分、最大ラベル数 6、最大乗換 8 などのガードを追加。
+
+
+
+### 📊 診断結果
+
+- `poetry run pytest -s tests/test_raptor_diagnostics.py` を実行（約 84 秒）。`raptor_debug_*.json` が更新され、各チャレンジ計測値が出力される。  
+
+  - 最長乗車：レグ 5 / 乗車 1,243 分 / 距離 44.28 km / 象限 1。深夜便の往復で時間は稼げるが、停留所は 4 箇所に留まる。  
+
+  - 停留所最多：レグ 4 / 乗車 310 分 / 停留所 4 / 象限 1。スコアリングがユニーク停留所を十分に押し上げられていない。  
+
+  - 最長距離：レグ 6 / 乗車 310 分 / 距離 52.37 km / 象限 1。距離ボーナスでやや外周に伸びるが、まだ市中心に偏在。  
+
+  - 市内ループ：RAPTOR は候補ゼロで `None` を返却し、既存の Beam Search フォールバックが採用される。境界シーケンスを使った強制通過ロジックが未実装のため。  
+
+- `planner_service._routes` の統計：静的エッジ 915,619 本 → 停留所スケジュール 902 → ルートテーブル 120（例: `1038:Down` は停留所 11、trip 25）。性能面では探索の停止条件が効くようになったが、ハーフミニッツ単位のダイナミックプログラミングで CPU 時間はまだ大きい。
+
+
+
+### 🚧 既知の課題
+
+- 4 つのチャレンジがすべて博多周辺の短距離往復ばかりになり、テーマに沿った「市内一周」「停留所踏破」「距離耐久」が満たせていない。RAPTOR のスコア設計と境界通過制約を再設計する必要がある。  
+
+- `line_stop_edges.csv` のシーケンスが路線全体を覆っていないため、RAPTOR が途中で探索停止しがち。停留所列の補完や、隣接停留所の推定精度向上が課題。  
+
+- フロントエンドは新しい `geometry/path` を描画できるが、City Loop がフォールバックで Beam Search の短距離ルートを表示してしまう。チャレンジ別に RAPTOR 成果物へ切り替える条件を固める必要あり。
+
+
+
+### 🔭 次のステップ（案）
+
+1. `ChallengeConfig` の採点式を見直し、境界シーケンス達成率・凸包面積・平均半径などを主目標に据える。特に市内ループでは bins 全通過を強制。  
+
+2. ルートテーブル構築時に停留所列を後方まで延長できるよう `line_stop_edges` の補完アルゴリズムを再検討。必要なら `/operationLine/timetable` でフルの停車順を取得。  
+
+3. 探索結果の比較ログを整備（RAPTOR vs Beam Search）し、`tests/test_planner_segments.py` で差分を検出。CI で 24h 制約や象限数の下限をアサートする。  
+
+4. 実行時間短縮のため、候補ルートの事前フィルタや時間帯スライス（朝/昼/夜）ごとの別探索を試す。
+
+---
+
+## 2025/11/07
+
+### 🔧 RAPTOR 制約まわりの整理
+- 現状のチャレンジは同一路線・停留所を往復しがちで、乗換バッファも 1〜2 分しかないため実走が難しい状況を再確認。
+- まずは **重複抑制と乗換合理性の確保を最優先** とし、以下のタスクで実装を進めることにした。
+  1. テーマごとに停留所／路線の再利用可否をパラメータ化し、状態に訪問履歴を保持して重複拡張を制御する。
+  2. 乗換には最低 5〜8 分の余裕を要求し、条件を満たさない遷移は探索段階で除外する。
+  3. 乗換ごとに固定時間のペナルティを加え、換乗回数が多いルートほどスコアが下がるようコスト関数を拡張する。
+  4. これらのパラメータを調整しつつ 4 テーマすべてで可行解が返るかベンチマークし、厳しすぎないか検証する。
+- 上記が整わないと「AI が提案しても現地で再現できない」状態が続くため、スコアリングより先に実装に着手する方針で合意。
+
+约束重复与换乘合理性的行动建议
+
+梳理需求：明确四个主题对重复的允许程度（例如最长距离/时间允许同线路往返一次？最多站完全禁止重复站点？）以及换乘体验的最低要求（最短缓冲 5–8 分钟、额外换乘惩罚时间等）。
+
+修改 RAPTOR 输入/状态
+
+在旅程状态里记录“已使用的线路/站点”，“最近一次换乘时间”。
+扩展代价函数：每次换乘前检查 下一段出发时间 - 当前到达时间 是否 ≥ 最小缓冲；若不足则直接跳过该边。
+对换乘增加固定惩罚（时间或分数），让搜索更倾向换乘少、余裕多的方案。
+重复限制逻辑
+
+在构建候选行程时维护一个 visited 集合：
+若站点/线路已在集合中且当前主题不允许重复，则不再扩展；
+或者允许但需降低优先级/增加惩罚，使算法自动避开重复。
+为特殊主题（如最长时间）设置参数化选项，以便调试不同的重复策略。
+
+站点/线路评分与候选池的实施步骤
+
+指标选型与特征汇总
+
+从现有数据生成可量化的特征：站点度/介数中心性、覆盖线路数、班次数、周边 POI 或行政区热度、离核心商圈/边界的距离，线路长度与跨区数等。
+对每个主题标记必需站点/线路（例如边界环要包含边界站、最长距离要包含长途线），以防裁剪时遗漏刚需元素。
+评分模型框架
+
+先用规则或线性加权组合构建初版评分：score = w1*中心性 + w2*班次 + w3*POI…，把站点、线路分别打分。
+设计可调参数（权重、阈值、衰减函数），方便根据后续效果快速调优；可引入自动搜索（网格、贝叶斯、遗传算法）在无标注情况下找到更合适的权重。
+候选池筛选策略
+
+按主题定义筛选规则：取评分前 X% 的站点及其连通线路 + 必选站/线路 + 保障起终点；必要时按区块/半径扩展，确保覆盖面。
+输出每个主题的“缩略图”，并记录被裁掉的节点/线路，以备调整阈值时参考。
+验证与迭代
+
+在筛选后的图上运行已经加约束的 RAPTOR，对比运行时间、路线质量（满足主题、换乘次数、重复情况）。
+若某主题不可行或覆盖度不足，回溯评分或阈值：调整权重、扩大候选比例，或对特定区域设定“强制保留”名单。
+将每次实验的参数、结果、运行时间存档，建立基准，后续可以用这些数据训练更智能的模型（例如学习排序或基于反馈的评分）。
+反馈闭环准备
+
+记录生成的路线及用户/团队反馈，当路线质量有了客观评价后，可把它们作为伪标签，逐步替换掉“规则评分”，向数据驱动或 AI 模型过渡。
+
+### RAPTORアルゴリズムのデバッグと修正
+
+本日、RAPTORアルゴリズムが正常に動作しない問題の調査と修正を実施しました。
+
+#### 1. 問題の特定と原因分析
+
+- **現象**: RAPTORアルゴリズムが路線計画を生成できず、代わりにデバッグ用の静的データが表示されていました。
+- **原因**: 調査の結果、データ前処理段階で路線の停留所数を最大15に制限するコード (`_build_route_timetables`内) が存在し、これが原因で`segments_*.csv`のデータと不整合が発生。結果として、ほとんどの路線で有効なトリップが1つも構築されず、アルゴリズムが空の路線データを受け取っていました。
+
+#### 2. データ処理のバグ修正
+
+- 上記の停留所数を制限するコード行をコメントアウトしました。
+- これにより、`RouteData`オブジェクトが正しく構築され、RAPTORアルゴリズムが有効な路線データに基づいてプラン生成を開始できるようになりました。
+
+#### 3. 制約違反の問題と対策
+
+- バグ修正後、アルゴリズムはプランを生成し始めましたが、各チャレンジで定められた制約条件（例：最大停留所訪問回数）を違反する問題が新たに発生しました。
+- ユーザーからの提案に基づき、テストが通るように一部のチャレンジの制約を緩和しました。
+    - **longest-duration**: `max_stop_visits` を2から3に緩和。
+    - **most-stops**: `forbid_non_hakata_duplicates` を`True`から`False`に変更。
+    - **longest-distance**: `max_stop_visits` を4に緩和。
+- 同時に、`test_raptor_diagnostics.py`内のテスト期待値も、緩和後の制約に合わせて更新しました。
+
+#### 4. NameErrorの修正
+
+- 修正過程で誤って混入させてしまった`NameError`（スコープ外の変数を参照）を特定し、修正しました。
+
+#### 5. 最終結果と今後の課題
+
+- 上記の修正により、`longest-duration`、`most-stops`、`longest-distance`の3つのチャレンジにおいて、テストがすべて成功するようになりました。アルゴリズムは現在、これらのテーマで有効なプランを生成できます。
+- 最も複雑な`city-loop`チャレンジは、依然としてアルゴリズムが解を見つけられず、テストがスキップされています。これは今後の改善課題です。
+
+---
+
+## 2025年11月10日星期一 - 路线规划器系统优化总结
+
+### **第一部分：各挑战路线最终逻辑详解 (含参数释义)**
+
+#### **通用核心约束**
+
+所有四个规划器都共享以下通用核心约束：
+1.  **福冈市范围限制**: 路线严格限制在福冈市内。
+2.  **高换乘自由度**: 最大换乘次数 (`max_rounds`) 上限为 **50** 次。
+3.  **防止无效往返**: 禁止在同一线路上立即掉头，且单条线路最多使用 **2** 次（在特定挑战中配置）。
+
+---
+
+#### **1. 距離最長ツアー (Longest Distance)**
+
+*   **最终目标**: 生成一条在福冈市内、总公里数最长的、包含显著长途路段的巴士旅行路线。
+*   **实现策略**: 算法以最大化总行驶距离为首要目标，同时通过奖励“平均路段长度”和“最长路段长度”来确保路线的质量和“史诗感”，避免路线由过多短途构成。
+*   **评分/惩罚参数**:
+    *   **奖励项 (Rewards):**
+        ```python
+        # + label.distance_km * 12500
+        # 含义：总行驶距离。这是最核心的奖励，权重极高，直接驱动算法寻找地理上最远的路线。
+        
+        # + metrics["avg_leg_distance"] * 1000
+        # 含义：平均路段长度。奖励路线的整体“气势”，避免由过多短途小站构成。
+        
+        # + metrics["max_leg_distance"] * 500
+        # 含义：最长单段路程。为包含至少一段“超级长途”的路线提供额外加分。
+        
+        # + metrics["unique_lines"] * 800
+        # 含义：乘坐的不重复线路数量。鼓励探索更多样的巴士线路。
+        
+        # + metrics["avg_radius"] * 220
+        # 含义：所有访问站点离市中心（博多）的平均距离。奖励向城市外围探索的行为。
+        
+        # + metrics["quadrants"] * 1500
+        # 含义：覆盖的城市象限数量。鼓励进行广域探索。
+        
+        # + metrics["hull_area"] * 60
+        # 含义：所有访问站点构成的凸包面积。奖励地理上分散、覆盖面积大的路线。
+        
+        # + metrics["boundary_ratio"] * 2500
+        # 含义：访问的站点中属于“城市边界”的比例。鼓励贴着城市边缘走。
+        ```
+    *   **惩罚项 (Penalties):**
+        ```python
+        # - metrics["repeat_penalty"] * 700
+        # 含义：重复乘坐线路的次数。轻微不鼓励重复使用同一线路。
+        
+        # - metrics["center_ratio"] * 3200
+        # 含义：访问的站点中属于“市中心”区域的比例。强力惩罚在市中心打转的行为。
+        
+        # - metrics["stop_repeat_total"] * 900
+        # 含义：重复访问站点的总次数。不鼓励走回头路。
+        
+        # - label.transfers * 900
+        # 含义：总换乘次数。在总距离相近时，倾向于选择换乘更少的路线。
+        ```
+
+---
+
+#### **2. 24時間ロングライド (Longest Duration)**
+
+*   **最终目标**: 在福冈市内，尽可能久地“坐车”，最大化总乘车时间。
+*   **实现策略**: 算法被配置为寻找时间上的“最优解”而非空间上的。它会主动寻找那些运行时间长、站间距大或可能途经拥堵区域的线路。
+*   **评分/惩罚参数**:
+    *   **奖励项 (Rewards):**
+        ```python
+        # + label.ride_minutes * 10000
+        # 含义：总乘坐时间。最核心的奖励，权重极高，算法的一切选择都为最大化这个指标服务。
+        
+        # + metrics["unique_lines"] * 600
+        # 含义：乘坐的不重复线路数量。鼓励探索更多样的巴士线路。
+        
+        # + metrics["quadrants"] * 1800
+        # 含义：覆盖的城市象限数量。鼓励广域探索。
+        
+        # + metrics["avg_radius"] * 160
+        # 含义：所有访问站点离市中心（博多）的平均距离。轻微奖励向外探索。
+        
+        # + metrics["boundary_ratio"] * 2200
+        # 含义：访问“城市边界”站点的比例。
+        ```
+    *   **惩罚项 (Penalties):**
+        ```python
+        # - metrics["center_ratio"] * 4000
+        # 含义：访问“市中心”区域站点的比例。非常严厉地惩罚在市中心打转的行为。
+        
+        # - metrics["short_leg_ratio"] * 3000
+        # 含义：短途路段（距离小于0.5km）占总路段的比例。严厉惩罚“坐一两站就下车”的行为。
+        
+        # - metrics["repeat_penalty"] * 500
+        # 含义：重复乘坐线路的次数。
+        
+        # - metrics["stop_repeat_total"] * 900
+        # 含义：重复访问站点的总次数。
+        
+        # - label.transfers * 800
+        # 含义：总换乘次数。
+        ```
+
+---
+
+#### **3. ユニーク停留所コンプリート (Most Stops)**
+
+*   **最终目标**: 在福冈市内，尽可能多地访问**不重复**的巴士站点。
+*   **实现策略**: 算法的目标是“收集站点”，通过频繁换乘和规划复杂路径来“扫过”最多的不同站点。
+*   **评分/惩罚参数**:
+    *   **奖励项 (Rewards):**
+        ```python
+        # + metrics["unique_stops"] * 12000
+        # 含义：访问过的不重复站点数量。最核心的奖励，每多一个新站点都有巨额加分。
+        
+        # + metrics["quadrants"] * 1200
+        # 含义：覆盖的城市象限数量。鼓励跨区域“刷站”。
+        
+        # + metrics["avg_radius"] * 180
+        # 含义：所有访问站点离市中心的平均距离。
+        
+        # + label.distance_km * 40
+        # 含义：总行驶距离。一个微小的奖励，在访问站点数相同时，倾向于走得更远的。
+        
+        # + metrics["boundary_ratio"] * 2500
+        # 含义：访问“城市边界”站点的比例。
+        ```
+    *   **惩罚项 (Penalties):**
+        ```python
+        # - metrics["center_ratio"] * 2500
+        # 含义：访问“市中心”区域站点的比例。惩罚在市中心打转。
+        
+        # - metrics["repeat_penalty"] * 600
+        # 含义：重复乘坐线路的次数。
+        
+        # - metrics["stop_repeat_total"] * 1600
+        # 含义：重复访问站点的总次数。权重很高，与主要奖励配合，强制算法寻找新站点。
+        
+        # - label.transfers * 1000
+        # 含义：总换乘次数。虽然此挑战换乘多，但依然有惩罚，避免不必要的换乘。
+        ```
+
+---
+
+#### **4. 福岡市一周トレース (City Loop)**
+
+*   **最终目标**: 生成一条环绕福冈市、必须经过所有四个地理象限、并尽可能贴近城市边界、到达各象限最远端的“一笔画”路线。
+*   **实现策略**: 采用分阶段评分。**第一阶段**，优先跑遍四个象限。**第二阶段**，在完成四象限后，集中奖励“沿边界行走”、“向外探索”和“扩大覆盖面积”的行为。
+*   **评分/惩罚参数 (完成4象限后)**:
+    *   **奖励项 (Rewards):**
+        ```python
+        # + metrics["boundary_ratio"] * 8000
+        # 含义：访问“城市边界”站点的比例。核心驱动力之一，强力激励算法贴着城市边缘走。
+        
+        # + metrics["boundary_progress"] * 6000
+        # 含义：沿边界行走的连续性/完成度。奖励连贯地、按顺序地扫过边界站点。
+        
+        # + metrics["max_radius_per_quadrant"] * 1000
+        # 含义：每个象限内访问过的最远点离中心的距离之和。新增的核心奖励，驱动算法探索每个象限的深处。
+        
+        # + metrics["hull_area"] * 120
+        # 含义：路线覆盖的地理面积。奖励“画一个大圈”。
+        
+        # + metrics["avg_radius"] * 220
+        # 含义：离市中心的平均距离。
+        
+        # + metrics["angle_span"] * 35
+        # 含义：路线覆盖的角度范围（最大360度）。奖励“环绕”市中心。
+        
+        # + metrics["turn_sum"] * 25
+        # 含义：路线的总转向角度。
+        
+        # + label.distance_km * 25
+        # 含义：总行驶距离。微小的奖励。
+        ```
+    *   **惩罚项 (Penalties):**
+        ```python
+        # - metrics["center_ratio"] * 4500
+        # 含义：访问“市中心”区域站点的比例。严厉惩罚向内收缩的路线。
+        
+        # - metrics["repeat_penalty"] * 500
+        # 含义：重复乘坐线路的次数。
+        
+        # - metrics["stop_repeat_total"] * 1500
+        # 含义：重复访问站点的总次数。
+        
+        # - label.transfers * 900
+        # 含义：总换乘次数。
+        ```
+
+---
+
+### **第二部分：程序文件调用逻辑**
+
+从前端发起一个API请求到最终获得路线方案，程序在后台的调用逻辑如下：
+
+1.  **API入口 (`routes.py`)**:
+    *   前端请求 `GET /api/v1/challenges/{challenge_id}`。
+    *   `routes.py` 中的 `get_challenge` 函数被触发，并调用 `get_planner_service()` 获取 `PlannerService` 对象。
+
+2.  **服务初始化 (`planner.py`)**:
+    *   `PlannerService` 在首次创建时，会执行 `_load_static_assets` 方法。
+    *   **【关键逻辑】** 在此方法中，程序加载站点数据，并读取 `fukuoka_city.geojson`，然后调用 `is_in_fukuoka` 函数，最终生成一个只包含福冈市内站点的集合 `self.fukuoka_station_codes`。
+
+3.  **计算挑战 (`planner.py`)**:
+    *   `get_challenge` 调用 `_ensure_plans`，后者进而调用 `_compute_challenges`。
+    *   `_compute_challenges` 根据 `challenge_id` 调用对应规划器的 `plan()` 函数，例如 `longest_distance.plan(self)`。
+
+4.  **规划器配置 (e.g., `longest_distance.py`)**:
+    *   `plan()` 函数首先调用 `get_config()`，该函数定义了此挑战专属的 `scoring_fn` (评分函数) 和 `max_rounds=50` 等约束，并将它们打包成 `ChallengeConfig` 对象。
+    *   最后，它调用核心算法 `run_raptor_challenge(planner, config)`。
+
+5.  **核心算法 (`raptor.py`)**:
+    *   `run_raptor_challenge` 是路线规划的主循环，进行多轮换乘探索。
+    *   在每一轮中，它调用 `_extend_label` 来尝试延伸当前路线。
+    *   `_extend_label` 函数是我们进行大量修改的地方：
+        1.  **【关键约束】** 首先检查目的站点是否在 `planner.fukuoka_station_codes` 集合内，如果不在则放弃此路段。
+        2.  检查是否存在无效的掉头。
+        3.  **【关键修复】** 计算并存储包含日期进位的**绝对时间**到 `JourneyLeg` 对象中，解决了之前时间显示错误的问题。
+    *   在 `_extend_label` 生成一个新的 `Label` (代表一个新的路线状态) 后，主循环会调用 `_label_metrics` 函数。
+
+6.  **指标计算 (`raptor.py`)**:
+    *   `_label_metrics` 函数根据 `Label` 中的信息，计算出我们定义的所有评价指标。
+    *   **【关键新增】** 这里现在会计算 `avg_leg_distance`, `max_leg_distance`, `max_radius_per_quadrant` 等新指标。
+
+7.  **评分 (e.g., `longest_distance.py`)**:
+    *   `run_raptor_challenge` 拿着上一步计算出的 `metrics`，回头调用从 `ChallengeConfig` 中传入的 `scoring_fn` (该函数定义在 `longest_distance.py` 等文件中)，为当前的路线状态计算出一个分数。
+
+8.  **结果生成与序列化 (`planner_models.py`)**:
+    *   `run_raptor_challenge` 完成所有探索后，选出得分最高的路线，打包成 `ChallengePlan` 对象返回。
+    *   在 `routes.py` 中，这个 `ChallengePlan` 对象被 `to_dict()` 方法转换为字典。
+    *   **【关键新增】** `to_dict()` 方法现在会计算并添加一个 `statistics` 字段，其中包含了前端展示所需的各项统计数据。同时，它会使用 `format_minutes` 函数，将**绝对时间**正确地格式化为 `HH:MM` 字符串。
+
+9.  **API响应**:
+    *   最终，这个包含了正确数据、符合所有新约束的字典，作为JSON响应返回给前端。

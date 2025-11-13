@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-import os, sys, csv, requests, argparse
+import argparse
+import csv
+import os
+import sys
+
+import requests
 from dotenv import load_dotenv
 from tqdm import trange
 

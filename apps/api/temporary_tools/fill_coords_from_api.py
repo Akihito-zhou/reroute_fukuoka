@@ -1,9 +1,14 @@
 # apps/api/tools/fill_coords_from_api.py
 from __future__ import annotations
-import os, sys, time, re, json
-from typing import Optional, Dict, Any, List
-import requests
+
+import os
+import sys
+import time
+from typing import Any
+
 import pandas as pd
+import requests
+from dotenv import load_dotenv
 
 BASE = os.path.dirname(__file__)
 DATA_DIR = os.path.abspath(os.path.join(BASE, "..", "data"))
@@ -13,7 +18,6 @@ MISSING_CODES_CSV = os.path.join(
     DATA_DIR, "missing_station_codes.csv"
 )  # 若存在则优先从这里读
 OUT_CSV = STATIONS_CSV
-from dotenv import load_dotenv
 
 load_dotenv()
 API_KEY = os.getenv("MIXWAY_API_KEY") or os.getenv("EKISP_KEY") or ""
@@ -64,7 +68,7 @@ DEFAULT_MISSING_CODES = [
 ]
 
 
-def dms_to_deg(dms: str) -> Optional[float]:
+def dms_to_deg(dms: str) -> float | None:
     """
     把 "130.25.7.90" 这类度.分.秒字符串转换为十进制度。
     """
@@ -81,7 +85,7 @@ def dms_to_deg(dms: str) -> Optional[float]:
         return None
 
 
-def fetch_point_detail(code: str) -> Optional[Dict[str, Any]]:
+def fetch_point_detail(code: str) -> dict[str, Any] | None:
     """
     优先用 point/detail 获取 name、lati_d、longi_d；若无 d 值则用 dms 转换。
     """
@@ -110,7 +114,7 @@ def fetch_point_detail(code: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def fetch_station_name(code: str) -> Optional[str]:
+def fetch_station_name(code: str) -> str | None:
     if not API_KEY:
         return None
     try:
@@ -126,7 +130,7 @@ def fetch_station_name(code: str) -> Optional[str]:
         return None
 
 
-def load_missing_codes() -> List[str]:
+def load_missing_codes() -> list[str]:
     if os.path.exists(MISSING_CODES_CSV):
         df = pd.read_csv(MISSING_CODES_CSV)
         col = None
@@ -161,7 +165,7 @@ def main():
             break
     if not code_col:
         print(
-            f"❌ stations.csv 缺少 code 列（候选: ekispert_station_code/station_code/code）"
+            "❌ stations.csv 缺少 code 列（候选: ekispert_station_code/station_code/code）"
         )
         sys.exit(1)
 

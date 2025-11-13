@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import ChallengeDetailPage from './pages/ChallengeDetailPage';
 import HomePage from './pages/HomePage';
+import MainVisualMockPage from './pages/MainVisualMockPage';
 
 // ローディング表示コンポーネント
 const LoadingOverlay: React.FC = () => (
@@ -34,7 +35,9 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => (
   <BrowserRouter>
+
     <AppContent />
+
   </BrowserRouter>
 );
 

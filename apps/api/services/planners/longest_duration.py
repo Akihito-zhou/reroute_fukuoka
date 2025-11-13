@@ -61,7 +61,7 @@ def get_config(planner: PlannerService) -> ChallengeConfig:
         theme_tags=["時間最大化", "耐久"],
         badge="最長乗車",
         require_quadrants=False,
-        max_rounds=5,
+        max_rounds=50,
         scoring_fn=scoring_fn,
         dominance_fn=dominance_fn,
         accept_fn=accept_fn,

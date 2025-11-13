@@ -9,6 +9,41 @@ from .planner_constants import REST_SUGGESTIONS, REST_STOP_THRESHOLD
 from .planner_models import LegPlan, TripEdge
 
 
+def is_in_fukuoka(lat: float, lon: float, fukuoka_polygons: list[list[list[float]]]) -> bool:
+    """
+    Checks if a point is inside any of the Fukuoka city polygons using the Ray Casting algorithm.
+    A point is in a polygon if a line from the point to infinity crosses the polygon edge an odd number of times.
+    """
+    inside = False
+    for polygon in fukuoka_polygons:
+        # Check each polygon
+        is_inside_polygon = False
+        for i in range(len(polygon)):
+            p1_lon, p1_lat = polygon[i]
+            p2_lon, p2_lat = polygon[i - 1] # Wraps around to the last vertex
+
+            # Check if the point is on a horizontal polygon segment
+            if p1_lat == p2_lat == lat and min(p1_lon, p2_lon) <= lon <= max(p1_lon, p2_lon):
+                return True
+            
+            # Check if the point is on a vertical polygon segment
+            if p1_lon == p2_lon == lon and min(p1_lat, p2_lat) <= lat <= max(p1_lat, p2_lat):
+                return True
+
+            # Ray casting algorithm
+            if (p1_lat > lat) != (p2_lat > lat):
+                # Calculate the x-intersection of the line segment with the ray
+                intersect_lon = (p2_lon - p1_lon) * (lat - p1_lat) / (p2_lat - p1_lat) + p1_lon
+                if lon < intersect_lon:
+                    is_inside_polygon = not is_inside_polygon
+        
+        if is_inside_polygon:
+            inside = True
+            break # No need to check other polygons if it's inside one
+            
+    return inside
+
+
 def haversine_km(a, b) -> float:
     """计算两个站点间的大圆距离 / 2地点間の大円距離を計算する。"""
     r = 6371.0
@@ -248,4 +283,5 @@ __all__ = [
     "distance_km",
     "project_to_plane",
     "label_leg_to_plan",
+    "is_in_fukuoka",
 ]

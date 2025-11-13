@@ -48,4 +48,5 @@ export type Leg = {
 export type ChallengeDetail = ChallengeSummary & {
   legs: Leg[];
   rest_stops: RestStop[];
+  statistics?: Record<string, string | number>;
 };

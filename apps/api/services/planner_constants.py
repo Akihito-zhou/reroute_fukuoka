@@ -17,8 +17,8 @@ MAX_LABELS_PER_STOP = 6  # 每站保留的标签数 / 各停留所のラベル�
 MAX_TRANSFERS = 50  # RAPTOR允许的换乘轮数 / RAPTORの最大ラウンド
 ALL_QUADRANTS_MASK = 1 | 2 | 4 | 8  # 四象限全覆盖位掩码 / 4象限制覇ビット
 BOUNDARY_BIN_COUNT = 18  # 边界角度分桶 / 境界角度ビン数
-BOUNDARY_MIN_DIST_KM = 0.3  # 视为边界站的最小距离 / 境界候補の最小距離
-BOUNDARY_MAX_DIST_KM = 4.0  # 视为边界站的最大距离 / 境界候補の最大距離
+BOUNDARY_MIN_DIST_KM = 0  # 视为边界站的最小距离 / 境界候補の最小距離
+BOUNDARY_MAX_DIST_KM = 10.0  # 视为边界站的最大距离 / 境界候補の最大距離
 MAX_ROUTES_FOR_RAPTOR = 400  # 预加载线路数 / 事前構築する路線
 MAX_TRIPS_PER_ROUTE = 60  # 每线路保留班次数 / 路線あたりの便数
 

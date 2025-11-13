@@ -32,6 +32,7 @@ def get_config(planner: PlannerService) -> ChallengeConfig:
             + label.distance_km * 25
             + metrics["boundary_ratio"] * 8000
             + metrics["boundary_progress"] * 6000
+            + metrics["max_radius_per_quadrant"] * 1000
             - metrics["center_ratio"] * 4500
             - metrics["repeat_penalty"] * 500
             - metrics["stop_repeat_total"] * 1500
@@ -69,7 +70,7 @@ def get_config(planner: PlannerService) -> ChallengeConfig:
         theme_tags=["シティループ", "周回"],
         badge="周回達人",
         require_quadrants=True,
-        max_rounds=6,
+        max_rounds=50,
         scoring_fn=scoring_fn,
         dominance_fn=dominance_fn,
         accept_fn=accept_fn,

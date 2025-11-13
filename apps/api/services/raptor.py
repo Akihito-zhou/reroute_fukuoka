@@ -206,9 +206,14 @@ def _extend_label(
     from_code = route.stops[segment_index]
     to_code = route.stops[segment_index + 1]
 
-    # Avoid immediate return trips
+    # Do not allow routes outside of Fukuoka city
+    if to_code not in planner.fukuoka_station_codes:
+        return None
+
+    # Avoid immediate return trips on the same line
     if (
         base.legs
+        and base.legs[-1].line_id == route.line_id
         and base.legs[-1].from_code == to_code
         and base.legs[-1].to_code == from_code
     ):
@@ -221,7 +226,31 @@ def _extend_label(
     visited: set[str] = set(base.visited)
     visited.add(to_code)
     quadrant_mask = base.quadrant_mask | planner.quadrant_map.get(to_code, 0)
-    ride_minutes = base.ride_minutes + max(0, arrive - depart)
+
+    # Calculate segment duration, handling midnight crossing
+    segment_daily_depart = depart
+    segment_daily_arrive = arrive
+    segment_duration = segment_daily_arrive - segment_daily_depart
+    if segment_duration < 0:
+        segment_duration += 1440 # Add a day if it crosses midnight
+
+    # Calculate the absolute departure time for the current segment
+    # This is the earliest time we can depart, which is max(base.arrival, daily_depart_adjusted_for_day)
+    # The daily_depart needs to be adjusted to the correct day relative to base.arrival
+    absolute_depart_for_segment = segment_daily_depart
+    # If the daily depart time is earlier than the daily part of base.arrival, it means it's on the next day
+    if absolute_depart_for_segment < (base.arrival % 1440):
+        absolute_depart_for_segment += (base.arrival // 1440 + 1) * 1440 # Add a full day
+    else:
+        absolute_depart_for_segment += (base.arrival // 1440) * 1440 # Add current day's offset
+
+    # Ensure we depart no earlier than base.arrival (plus transfer buffer)
+    absolute_depart_for_segment = max(absolute_depart_for_segment, base.arrival)
+
+    # Calculate the absolute arrival time for the current segment
+    absolute_arrive_for_segment = absolute_depart_for_segment + segment_duration
+
+    ride_minutes = base.ride_minutes + segment_duration
     distance_km = base.distance_km + distance_inc
 
     legs = list(base.legs)
@@ -232,7 +261,7 @@ def _extend_label(
         or prev_leg.trip_id != trip.trip_id
         or prev_leg.line_id != route.line_id
     )
-    gap = depart - prev_leg.arrive if prev_leg else None
+    gap = absolute_depart_for_segment - prev_leg.arrive if prev_leg else None
 
     if boarding_new_trip and prev_leg and gap is not None:
         if gap < config.min_transfer_minutes:
@@ -257,8 +286,8 @@ def _extend_label(
             trip_id=last.trip_id,
             from_code=last.from_code,
             to_code=to_code,
-            depart=last.depart,
-            arrive=arrive,
+            depart=last.depart, # This is already the absolute depart of the first segment of this extended leg
+            arrive=absolute_arrive_for_segment, # Use absolute arrive of the current (last) segment
             distance_km=last.distance_km + distance_inc,
             stop_hops=last.stop_hops + 1,
         )
@@ -270,8 +299,8 @@ def _extend_label(
                 trip_id=trip.trip_id,
                 from_code=from_code,
                 to_code=to_code,
-                depart=depart,
-                arrive=arrive,
+                depart=absolute_depart_for_segment, # Use absolute depart
+                arrive=absolute_arrive_for_segment,  # Use absolute arrive
                 distance_km=distance_inc,
                 stop_hops=1,
             )
@@ -304,7 +333,7 @@ def _extend_label(
             return None
 
     return Label(
-        arrival=arrive,
+        arrival=absolute_arrive_for_segment, # Corrected: Use the calculated absolute arrival
         ride_minutes=ride_minutes,
         distance_km=distance_km,
         visited=frozenset(visited),
@@ -398,6 +427,21 @@ def _label_metrics(planner: PlannerService, label: Label) -> dict[str, float]:
     center_visits = sum(1 for d in distances if d < planner.inner_radius_km)
     center_ratio = (center_visits / len(distances)) if distances else 0.0
 
+    # Leg-based metrics
+    leg_distances = [leg.distance_km for leg in label.legs]
+    avg_leg_distance = sum(leg_distances) / len(leg_distances) if leg_distances else 0.0
+    max_leg_distance = max(leg_distances) if leg_distances else 0.0
+
+    # Quadrant-based metrics
+    max_radius_per_quadrant: dict[int, float] = defaultdict(float)
+    for code in label.visited:
+        station = planner.stations.get(code)
+        quadrant = planner.quadrant_map.get(code)
+        if not station or not quadrant:
+            continue
+        dist = distance_km(station.lat, station.lon, *planner.hakata_coord)
+        max_radius_per_quadrant[quadrant] = max(max_radius_per_quadrant[quadrant], dist)
+
     path_coords: list[tuple[float, float]] = []
     if label.legs:
         first_leg = label.legs[0]
@@ -457,6 +501,9 @@ def _label_metrics(planner: PlannerService, label: Label) -> dict[str, float]:
         "boundary_progress": boundary_progress,
         "stop_repeat_total": float(stop_repeat_total),
         "stop_repeat_max": float(stop_repeat_max),
+        "avg_leg_distance": avg_leg_distance,
+        "max_leg_distance": max_leg_distance,
+        "max_radius_per_quadrant": sum(max_radius_per_quadrant.values()),
     }
 
 

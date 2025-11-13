@@ -19,6 +19,9 @@ def get_config(planner: PlannerService) -> ChallengeConfig:
     def scoring_fn(label: Label, metrics: dict[str, float]) -> float:
         return (
             label.distance_km * 12500
+            + metrics["avg_leg_distance"] * 1000
+            + metrics["max_leg_distance"] * 500
+            + metrics["unique_lines"] * 800
             + metrics["avg_radius"] * 220
             + metrics["quadrants"] * 1500
             + metrics["hull_area"] * 60
@@ -54,12 +57,13 @@ def get_config(planner: PlannerService) -> ChallengeConfig:
         theme_tags=["距離最大化", "耐久"],
         badge="最長距離",
         require_quadrants=False,
-        max_rounds=6,
+        max_rounds=50,
         scoring_fn=scoring_fn,
         dominance_fn=dominance_fn,
         accept_fn=accept_fn,
         min_transfer_minutes=transfer_buffer,
         max_stop_visits=4,
+        max_line_visits=2,
     )
 
 

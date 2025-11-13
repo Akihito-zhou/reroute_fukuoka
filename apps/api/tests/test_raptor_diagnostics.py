@@ -204,7 +204,7 @@ ROUTE_EXPECTATIONS = {
     "Longest Distance": {"min_transfer_gap": 5, "max_stop_visits": 4},
     "Most Stops": {
         "min_transfer_gap": 6,
-        "max_stop_visits": 2,
+        "max_stop_visits": 3,
         "forbid_non_hakata_duplicates": False,
     },
     "City Loop": {

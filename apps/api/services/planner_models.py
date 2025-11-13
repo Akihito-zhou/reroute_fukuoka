@@ -187,6 +187,26 @@ class ChallengePlan:
         rest_stops = generate_rest_stops(self.legs)
         total_minutes = sum(leg.ride_minutes for leg in self.legs)
         total_distance = sum(leg.distance_km for leg in self.legs)
+        
+        # Calculate detailed statistics
+        leg_distances = [leg.distance_km for leg in self.legs]
+        leg_minutes = [leg.ride_minutes for leg in self.legs]
+        all_stops = set()
+        for leg in self.legs:
+            all_stops.add(leg.from_code)
+            all_stops.add(leg.to_code)
+
+        statistics = {
+            "total_unique_stops": len(all_stops),
+            "total_unique_lines": len(set(leg.line_id for leg in self.legs)),
+            "avg_leg_distance_km": round(total_distance / len(leg_distances), 2) if leg_distances else 0,
+            "max_leg_distance_km": round(max(leg_distances), 2) if leg_distances else 0,
+            "min_leg_distance_km": round(min(leg_distances), 2) if leg_distances else 0,
+            "avg_leg_minutes": round(total_minutes / len(leg_minutes), 1) if leg_minutes else 0,
+            "max_leg_minutes": max(leg_minutes) if leg_minutes else 0,
+            "min_leg_minutes": min(leg_minutes) if leg_minutes else 0,
+        }
+
         return {
             "id": self.challenge_id,
             "title": self.title,
@@ -201,6 +221,7 @@ class ChallengePlan:
             "badges": [self.badge],
             "legs": legs_payload,
             "rest_stops": rest_stops,
+            "statistics": statistics,
         }
 
 

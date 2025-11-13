@@ -8,6 +8,7 @@ import time
 from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import planner_loader
@@ -81,7 +82,7 @@ class PlannerService:
         self.routes_by_stop: dict[str, set[str]] = defaultdict(set)
         self.hakata_coord: tuple[float, float] = (33.589, 130.420)
         self.inner_radius_km: float = 2.0
-        self.city_boundary: list[tuple[float, float]] = []
+        self.city_boundary: list[list[tuple[float, float]]] = []
         self.boundary_sequence: list[str] = []
         self.boundary_index: dict[str, int] = {}
 
@@ -112,15 +113,21 @@ class PlannerService:
 
     # ---------- public API ----------
 
+    @staticmethod
+    def _normalize_challenge_id(challenge_id: str) -> str:
+        """Normalize challenge IDs to the kebab-case form used by the API."""
+        return challenge_id.strip().lower().replace("_", "-")
+
     def list_challenges(self) -> list[dict]:
         plans = self._ensure_plans()
         return [plan.to_dict() for plan in plans.values() if plan]
 
     def get_challenge(self, challenge_id: str) -> dict:
+        normalized_id = self._normalize_challenge_id(challenge_id)
         plans = self._ensure_plans()
-        if challenge_id not in plans or not plans[challenge_id]:
+        if normalized_id not in plans or not plans[normalized_id]:
             raise PlannerError(f"challenge '{challenge_id}' not available")
-        return plans[challenge_id].to_dict()
+        return plans[normalized_id].to_dict()
 
     # ---------- bootstrap ----------
 
@@ -164,6 +171,33 @@ class PlannerService:
     def _load_static_assets(self) -> None:
         """Loads static assets like station and line data."""
         self._call_loader(planner_loader.load_static_assets, self)
+        
+        # Load Fukuoka city boundary and filter stations
+        import json
+        from .planner_utils import is_in_fukuoka
+        
+        self.fukuoka_polygons = []
+        geojson_path = self.data_dir / "fukuoka_city.geojson"
+        if geojson_path.exists():
+            with geojson_path.open("r", encoding="utf-8") as f:
+                geojson_data = json.load(f)
+                for feature in geojson_data.get("features", []):
+                    geom = feature.get("geometry", {})
+                    if geom.get("type") == "Polygon":
+                        # GeoJSON format is [lon, lat]
+                        self.fukuoka_polygons.append(geom["coordinates"][0])
+                    elif geom.get("type") == "MultiPolygon":
+                        for polygon in geom["coordinates"]:
+                            self.fukuoka_polygons.append(polygon[0])
+
+        self.fukuoka_station_codes = set()
+        if self.fukuoka_polygons:
+            for station in self.stations.values():
+                if is_in_fukuoka(station.lat, station.lon, self.fukuoka_polygons):
+                    self.fukuoka_station_codes.add(station.code)
+        else:
+            # If no boundary file, assume all stations are valid
+            self.fukuoka_station_codes = set(self.stations.keys())
 
     def _load_edges(self, data_path: Path | None) -> None:
         """Loads trip edge data and initializes schedules."""
@@ -319,13 +353,33 @@ class PlannerService:
     # ---------- challenge planners ----------
 
     def _compute_challenges(self) -> dict[str, ChallengePlan | None]:
-        """Computes all challenges by delegating to the specific planner modules."""
-        plans = {
-            "longest-duration": longest_duration.plan(self),
-            "most-stops": most_stops.plan(self),
-            "city-loop": city_loop.plan(self),
-            "longest-distance": longest_distance.plan(self),
+        """Computes all challenges in parallel by delegating to the specific planner modules."""
+        planners = {
+            "longest-duration": longest_duration.plan,
+            "most-stops": most_stops.plan,
+            "city-loop": city_loop.plan,
+            "longest-distance": longest_distance.plan,
         }
+        
+        plans: dict[str, ChallengePlan | None] = {}
+        with ThreadPoolExecutor(max_workers=len(planners)) as executor:
+            future_to_challenge = {
+                executor.submit(planner_func, self): challenge_id
+                for challenge_id, planner_func in planners.items()
+            }
+            for future in future_to_challenge:
+                challenge_id = future_to_challenge[future]
+                normalized_id = self._normalize_challenge_id(challenge_id)
+                try:
+                    plan = future.result()
+                    if plan:
+                        plan.challenge_id = self._normalize_challenge_id(
+                            plan.challenge_id
+                        )
+                    plans[normalized_id] = plan
+                except Exception:
+                    logger.exception(f"Error computing challenge '{challenge_id}'")
+                    plans[normalized_id] = None
         return plans
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -139,22 +140,59 @@ def assign_quadrants(service: "PlannerService") -> dict[str, int]:
     return mask
 
 
-def load_city_boundary(service: "PlannerService") -> list[tuple[float, float]]:
-    """读取城市边界 geojson 并返回坐标链 / 都市境界GeoJSONを読み座標列を返す。"""
+def load_city_boundary(service: "PlannerService") -> list[list[tuple[float, float]]]:
+    """???????? polygon??????? / ???????????????????"""
     path = service.data_dir / "fukuoka_city.geojson"
     if not path.exists():
         logger.warning("fukuoka_city.geojson not found; city loop may degrade.")
         return []
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    coords: list[tuple[float, float]] = []
     try:
-        boundary = data["features"][0]["geometry"]["coordinates"][0]
-        for lon, lat in boundary:
-            coords.append((lat, lon))
-    except (KeyError, IndexError, TypeError):
-        logger.warning("Invalid geojson structure for city boundary.")
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        logger.warning("City boundary geojson is not valid JSON.")
         return []
-    return coords
+
+    features = data.get("features")
+    if not isinstance(features, list):
+        logger.warning("City boundary geojson must be a FeatureCollection.")
+        return []
+
+    rings: list[list[tuple[float, float]]] = []
+
+    def append_ring(raw_ring: list[list[float]]) -> None:
+        cleaned: list[tuple[float, float]] = []
+        for pair in raw_ring:
+            if (
+                isinstance(pair, (list, tuple))
+                and len(pair) >= 2
+                and isinstance(pair[0], (int, float))
+                and isinstance(pair[1], (int, float))
+            ):
+                lon, lat = pair[0], pair[1]
+                cleaned.append((lat, lon))
+        if len(cleaned) >= 2:
+            rings.append(cleaned)
+
+    for feature in features:
+        geometry = feature.get("geometry") if isinstance(feature, dict) else None
+        if not isinstance(geometry, dict):
+            continue
+        gtype = geometry.get("type")
+        coords = geometry.get("coordinates")
+        if not coords:
+            continue
+        if gtype == "Polygon" and isinstance(coords, list):
+            append_ring(coords[0] if coords else [])
+        elif gtype == "MultiPolygon" and isinstance(coords, list):
+            for poly in coords:
+                if poly:
+                    append_ring(poly[0])
+
+    if not rings:
+        logger.warning("City boundary geojson has no polygon data.")
+        return []
+    return rings
+
 
 
 def load_line_stop_edges(service: "PlannerService") -> dict[str, list[str]]:
@@ -177,20 +215,24 @@ def load_line_stop_edges(service: "PlannerService") -> dict[str, list[str]]:
 
 
 def distance_point_to_polyline(service: "PlannerService", lat: float, lon: float) -> float:
-    """计算点到城市边界折线的最小距离 / 点から境界ポリラインへの最短距離を求める。"""
+    """????????????????? / ???????????????"""
     if not service.city_boundary:
         return float("inf")
     px, py = project_to_plane(lat, lon, *service.hakata_coord)
     min_dist = float("inf")
-    for idx in range(len(service.city_boundary) - 1):
-        lat_a, lon_a = service.city_boundary[idx]
-        lat_b, lon_b = service.city_boundary[idx + 1]
-        ax, ay = project_to_plane(lat_a, lon_a, *service.hakata_coord)
-        bx, by = project_to_plane(lat_b, lon_b, *service.hakata_coord)
-        dist = point_segment_distance(px, py, ax, ay, bx, by)
-        if dist < min_dist:
-            min_dist = dist
+    for ring in service.city_boundary:
+        if len(ring) < 2:
+            continue
+        for idx in range(len(ring) - 1):
+            lat_a, lon_a = ring[idx]
+            lat_b, lon_b = ring[idx + 1]
+            ax, ay = project_to_plane(lat_a, lon_a, *service.hakata_coord)
+            bx, by = project_to_plane(lat_b, lon_b, *service.hakata_coord)
+            dist = point_segment_distance(px, py, ax, ay, bx, by)
+            if dist < min_dist:
+                min_dist = dist
     return min_dist
+
 
 
 def point_segment_distance(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
@@ -212,7 +254,8 @@ def build_boundary_sequence(service: "PlannerService") -> None:
         service.boundary_sequence = []
         service.boundary_index = {}
         return
-    candidate_by_bin: dict[int, tuple[float, str]] = {}
+    
+    candidates: dict[str, tuple[float, str]] = {}
     for code, station in service.stations.items():
         dist = distance_point_to_polyline(service, station.lat, station.lon)
         if not (BOUNDARY_MIN_DIST_KM <= dist <= BOUNDARY_MAX_DIST_KM):
@@ -220,22 +263,15 @@ def build_boundary_sequence(service: "PlannerService") -> None:
         radius = distance_km(station.lat, station.lon, *service.hakata_coord)
         if radius < service.inner_radius_km:
             continue
-        x, y = project_to_plane(station.lat, station.lon, *service.hakata_coord)
-        if x == 0 and y == 0:
-            continue
-        angle = (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
-        bin_idx = int(angle / 360.0 * BOUNDARY_BIN_COUNT) % BOUNDARY_BIN_COUNT
-        existing = candidate_by_bin.get(bin_idx)
-        if existing is None or dist < existing[0]:
-            candidate_by_bin[bin_idx] = (dist, code)
+        candidates[code] = (dist, code)
 
-    if not candidate_by_bin:
+    if not candidates:
         service.boundary_sequence = []
         service.boundary_index = {}
         return
 
     selected: list[tuple[float, str]] = []
-    for _, (dist, code) in candidate_by_bin.items():
+    for _, code in candidates.values():
         station = service.stations.get(code)
         if not station:
             continue
@@ -245,13 +281,7 @@ def build_boundary_sequence(service: "PlannerService") -> None:
 
     selected.sort()
 
-    filtered: list[str] = []
-    last_angle = None
-    for angle, code in selected:
-        if filtered and last_angle is not None and abs(angle - last_angle) < (360 / BOUNDARY_BIN_COUNT) / 2:
-            continue
-        filtered.append(code)
-        last_angle = angle
+    filtered: list[str] = [code for angle, code in selected]
 
     if service.hakata_stops:
         filtered = [service.hakata_stops[0]] + filtered + [service.hakata_stops[0]]
